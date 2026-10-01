@@ -126,3 +126,7 @@ Version 1.12 change: the number-row key 1 (۱ in Persian mode / 1 in English mod
 
 ### Mouse control
 The top toolbar pointer button `➤` opens the mouse/pointer control panel. It contains a touch-control field with a visible pointer, four directional controls, and separate left/right click buttons. Finger movement inside the field moves the visible pointer and sends directional cursor events; the click buttons send primary/secondary mouse-button key events. No new button is added to the main keyboard layout.
+
+
+## FKP_3 v1.31
+Requested fixes: third-row alphabet input, keyboard-scoped system cursor visibility, mouse drag support, scrollable امکانات window, and 100-item clipboard collection/history. See `V1.31_CHANGES.txt`.

@@ -23,6 +23,7 @@ public class MouseAccessibilityService extends AccessibilityService {
     private float x = -1, y = -1;
     private int screenW, screenH;
     private int cursorSize;
+    private boolean dragMode=false;
 
     public static MouseAccessibilityService getInstance() { return instance; }
 
@@ -34,12 +35,28 @@ public class MouseAccessibilityService extends AccessibilityService {
         screenW = dm.widthPixels;
         screenH = dm.heightPixels;
         cursorSize = Math.max(42, Math.round(42 * dm.density));
-        showCursor();
         AccessibilityServiceInfo info = getServiceInfo();
         if (info != null) {
             info.flags |= AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS;
             setServiceInfo(info);
         }
+    }
+
+    public static void showCursorFromKeyboard() {
+        MouseAccessibilityService s=instance;
+        if(s!=null) s.showCursor();
+    }
+
+    public static void hideCursorFromKeyboard() {
+        MouseAccessibilityService s=instance;
+        if(s!=null) s.hideCursor();
+    }
+
+    private void hideCursor() {
+        if(cursor!=null && wm!=null){
+            try{wm.removeView(cursor);}catch(Exception ignored){}
+        }
+        cursor=null;
     }
 
     private void showCursor() {
@@ -90,8 +107,19 @@ public class MouseAccessibilityService extends AccessibilityService {
         if (s != null) s.resetCursor();
     }
 
+    public static void beginDragFromKeyboard() {
+        MouseAccessibilityService s=instance;
+        if(s!=null){s.dragMode=true;}
+    }
+
+    public static void endDragFromKeyboard() {
+        MouseAccessibilityService s=instance;
+        if(s!=null){s.dragMode=false;}
+    }
+
     private void moveRelative(float dx, float dy) {
         if (cursor == null) showCursor();
+        float oldX=x, oldY=y;
         float maxX = Math.max(0, screenW - cursorSize);
         float maxY = Math.max(0, screenH - cursorSize);
         x = Math.max(0, Math.min(maxX, x + dx));
@@ -100,6 +128,9 @@ public class MouseAccessibilityService extends AccessibilityService {
         lp.x = Math.round(x);
         lp.y = Math.round(y);
         wm.updateViewLayout(cursor, lp);
+        if(dragMode && Build.VERSION.SDK_INT>=24){
+            dispatchSwipe(oldX+3f,oldY+3f,x+3f,y+3f,90);
+        }
     }
 
     private void resetCursor() {
@@ -110,9 +141,17 @@ public class MouseAccessibilityService extends AccessibilityService {
         wm.updateViewLayout(cursor, lp);
     }
 
+    private void dispatchSwipe(float sx,float sy,float ex,float ey,long duration){
+        Path path=new Path();
+        path.moveTo(sx,sy);
+        path.lineTo(ex,ey);
+        GestureDescription.StrokeDescription stroke=new GestureDescription.StrokeDescription(path,0,Math.max(40,duration));
+        dispatchGesture(new GestureDescription.Builder().addStroke(stroke).build(),null,null);
+    }
+
     private void click(boolean right) {
-        if (Build.VERSION.SDK_INT < 24) return;
-        float cx = x + 2f;
+        if (Build.VERSION.SDK_INT < 24 || cursor == null) return;
+        float cx = x + 3f;
         float cy = y + 2f;
         Path p = new Path();
         p.moveTo(cx, cy);

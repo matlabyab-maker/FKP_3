@@ -2,6 +2,8 @@ package com.fkp2.keyboard;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
@@ -51,6 +53,9 @@ public class FastKeyboardService extends InputMethodService {
     private int resizeLevel=0;
     private int normalWindowHeight=0;
     private final ArrayList<String> history=new ArrayList<>();
+    private final ArrayList<String> clipboardHistory=new ArrayList<>();
+    private ClipboardManager clipboardManager;
+    private ClipboardManager.OnPrimaryClipChangedListener clipboardListener;
     private SharedPreferences prefs;
     private LinearLayout currentRoot;
     private int keyboardColor=CREAM;
@@ -80,9 +85,11 @@ public class FastKeyboardService extends InputMethodService {
     private static final String[] FLAGS={"🇮🇷","🇺🇸","🇬🇧","🇨🇦","🇦🇺","🇩🇪","🇫🇷","🇮🇹","🇪🇸","🇵🇹","🇹🇷","🇷🇺","🇺🇦","🇨🇳","🇯🇵","🇰🇷","🇮🇳","🇵🇰","🇦🇫","🇮🇶","🇸🇦","🇦🇪","🇶🇦","🇰🇼","🇧🇭","🇴🇲","🇪🇬","🇯🇴","🇱🇧","🇸🇾","🇵🇸","🇬🇷","🇳🇱","🇧🇪","🇨🇭","🇦🇹","🇸🇪","🇳🇴","🇩🇰","🇫🇮","🇵🇱","🇨🇿","🇭🇺","🇷🇴","🇧🇬","🇷🇸","🇭🇷","🇦🇱","🇧🇦","🇬🇪","🇦🇲","🇦🇿","🇰🇿","🇺🇿","🇹🇯","🇹🇲","🇰🇬","🇳🇿","🇿🇦","🇳🇬","🇰🇪","🇲🇦","🇩🇿","🇹🇳","🇧🇷","🇦🇷","🇨🇱","🇨🇴","🇲🇽","🇺🇾","🇻🇪","🇵🇪","🇨🇺","🇯🇲","🇸🇬","🇲🇾","🇮🇩","🇹🇭","🇻🇳","🇵🇭"};
     private static final String[] SYMBOLS={"!","@","#","$","%","^","&","*","(",")","-","_","+","=","[","]","{","}","\\","|",";",":","'","\"",",",".","<",">","/","?","~","`","§","¶","©","®","™","€","£","¥","₽","₹","₺","₩","₴","₦","₱","₲","₵","₡","₫","฿","∞","≈","≠","≤","≥","±","×","÷","√","∑","∏","∆","∇","∂","∫","∮","π","µ","Ω","α","β","γ","δ","θ","λ","σ","φ","ψ","ω","←","↑","→","↓","↔","↕","↖","↗","↘","↙","⇐","⇑","⇒","⇓","↻","↺","✓","✔","✕","✖","✗","✘","★","☆","●","○","■","□","◆","◇","▲","△","▼","▽","♥","♡","♦","♢","♣","♤","♧","☀","☁","☂","☃","☄","☎","☑","☒","☐","⚠","⚡","⚙","⚓","⚽","♠","♣","♥","♦","♪","♫","†","‡","‰","′","″","↪","↩","⌂","⌘","⌫","⏎","␣","◀","▶","⏪","⏩","⏮","⏭","⏸","⏹","⏺","🔒","🔓","🔑","🔔","🔕","🔗","🗝️"};
 
-    @Override public void onCreate(){super.onCreate();prefs=getSharedPreferences("fkp2",Context.MODE_PRIVATE);loadHistory();keyboardColor=prefs.getInt("keyboardColor",CREAM); if(!prefs.getBoolean("suggestions_cleared_v19",false)){prefs.edit().remove("predictor").remove("suggestions_seed").putBoolean("suggestions_cleared_v19",true).apply();} predictor.load(prefs);}
+    @Override public void onCreate(){super.onCreate();prefs=getSharedPreferences("fkp2",Context.MODE_PRIVATE);loadHistory();loadClipboardHistory();clipboardManager=(ClipboardManager)getSystemService(CLIPBOARD_SERVICE);clipboardListener=()->capturePrimaryClip();if(clipboardManager!=null){clipboardManager.addPrimaryClipChangedListener(clipboardListener);capturePrimaryClip();}keyboardColor=prefs.getInt("keyboardColor",CREAM); if(!prefs.getBoolean("suggestions_cleared_v19",false)){prefs.edit().remove("predictor").remove("suggestions_seed").putBoolean("suggestions_cleared_v19",true).apply();} predictor.load(prefs);}
     @Override public View onCreateInputView(){return buildKeyboard();}
     @Override public void onStartInputView(EditorInfo info,boolean restarting){super.onStartInputView(info,restarting);if(restarting)rebuild(); updateSuggestions();}
+    @Override public void onFinishInputView(boolean finishingInput){super.onFinishInputView(finishingInput);MouseAccessibilityService.hideCursorFromKeyboard();}
+    @Override public void onDestroy(){if(clipboardManager!=null&&clipboardListener!=null){try{clipboardManager.removePrimaryClipChangedListener(clipboardListener);}catch(Exception ignored){}}MouseAccessibilityService.hideCursorFromKeyboard();super.onDestroy();}
     @Override public void onUpdateSelection(int oldSelStart,int oldSelEnd,int newSelStart,int newSelEnd,int candidatesStart,int candidatesEnd){super.onUpdateSelection(oldSelStart,oldSelEnd,newSelStart,newSelEnd,candidatesStart,candidatesEnd);updateSuggestions();}
 
     private LinearLayout buildKeyboard(){
@@ -99,7 +106,7 @@ public class FastKeyboardService extends InputMethodService {
         LinearLayout letterRows=new LinearLayout(this);letterRows.setOrientation(LinearLayout.VERTICAL);letterRows.setLayoutParams(new LinearLayout.LayoutParams(0,-1,11f));
         addLetterRow(letterRows,english?EN_R1:PERSIAN_R1,english?EN_MARKS_R1:PERSIAN_MARKS_R1);addLetterRow(letterRows,english?EN_R2:PERSIAN_R2,english?EN_MARKS_R2:PERSIAN_MARKS_R2);
         letters.addView(letterRows);Button enter=key("Enter",16,NAVY,Color.rgb(214,232,255));letters.addView(enter,new LinearLayout.LayoutParams(0,-1,1.2f));enter.setOnClickListener(v->sendKey(KeyEvent.KEYCODE_ENTER));root.addView(letters);
-        LinearLayout third=row(1f);Button capsB=key(capsLocked?"Caps 🔒":"Caps",16,NAVY,caps?YELLOW:CREAM);third.addView(capsB,weight(1.2f));capsB.setOnClickListener(v->{long now=android.os.SystemClock.uptimeMillis();if(now-lastCapsTap<450){capsLocked=!capsLocked;caps=capsLocked;lastCapsTap=0;}else{caps=!caps;lastCapsTap=now;}rebuild();});String[] r3=english?EN_R3:PERSIAN_R3;for(int i=0;i<r3.length;i++){String s=caps?r3[i].toUpperCase():r3[i];String mark="";Button b=dualKey(s,mark,20,NAVY,RED,CREAM);addDualKeyBehavior(b, s, mark);third.addView(b,weight(1));}Button qmark=key("؟",20,RED,CREAM);third.addView(qmark,weight(1));qmark.setOnClickListener(v->commit("؟"));root.addView(third);
+        LinearLayout third=row(1f);Button capsB=key(capsLocked?"Caps 🔒":"Caps",16,NAVY,caps?YELLOW:CREAM);third.addView(capsB,weight(1.2f));capsB.setOnClickListener(v->{long now=android.os.SystemClock.uptimeMillis();if(now-lastCapsTap<450){capsLocked=!capsLocked;caps=capsLocked;lastCapsTap=0;}else{caps=!caps;lastCapsTap=now;}rebuild();});String[] r3=english?EN_R3:PERSIAN_R3;for(int i=0;i<r3.length;i++){String s=caps?r3[i].toUpperCase():r3[i];Button b=key(s,20,NAVY,CREAM);third.addView(b,weight(1));final String out=s;b.setOnClickListener(v->{commit(out);if(!capsLocked&&caps){caps=false;rebuild();}});}Button qmark=key("؟",20,RED,CREAM);third.addView(qmark,weight(1));qmark.setOnClickListener(v->commit("؟"));root.addView(third);
         LinearLayout bottom=row(1.08f);Button emoji=keyWithIcon("اموجی","☺",14,NAVY,CREAM);Button sym=keyWithIcon("123\n!@...","⌘",13,NAVY,symbols?YELLOW:CREAM);Button globe=key(english?"🌐 EN":"🌐 FA",18,BLUE,CREAM);Button space=key("Space",19,NAVY,CREAM);Button comma=key(english?",":"،",23,RED,CREAM);Button question=key(".",23,RED,CREAM);Button pm=key("+\n−",18,RED,CREAM);Button left=key("←",23,BLUE,CREAM);Button right=key("→",23,BLUE,CREAM);Button up=key("↑",23,BLUE,CREAM);Button down=key("↓",23,BLUE,CREAM);bottom.addView(emoji,weight(.82f));bottom.addView(sym,weight(1.15f));bottom.addView(globe,weight(.9f));bottom.addView(space,weight(2.35f));bottom.addView(comma,weight(.72f));bottom.addView(question,weight(.72f));bottom.addView(pm,weight(.72f));bottom.addView(left,weight(.95f));bottom.addView(right,weight(.95f));bottom.addView(up,weight(.82f));bottom.addView(down,weight(.82f));emoji.setOnClickListener(v->showEmoji(v));sym.setOnClickListener(v->showSymbols(v));globe.setOnClickListener(v->{english=!english;symbols=false;rebuild();});space.setOnClickListener(v->commitSpaceAndLearn());comma.setOnClickListener(v->commit(((Button)v).getText().toString()));question.setOnClickListener(v->commit("."));pm.setOnClickListener(v->commit("±"));addArrowRepeat(left,KeyEvent.KEYCODE_DPAD_LEFT);addArrowRepeat(right,KeyEvent.KEYCODE_DPAD_RIGHT);addArrowRepeat(up,KeyEvent.KEYCODE_DPAD_UP);addArrowRepeat(down,KeyEvent.KEYCODE_DPAD_DOWN);root.addView(bottom);return root;
     }
 
@@ -261,7 +268,22 @@ public class FastKeyboardService extends InputMethodService {
         buttons.addView(leftClick,weight(1));
         buttons.addView(rightClick,weight(1));
         box.addView(buttons,new LinearLayout.LayoutParams(-1,dp(58)));
-        leftClick.setOnClickListener(v->MouseAccessibilityService.clickFromKeyboard(false));
+        final boolean[] leftHeld={false};
+        final boolean[] dragStarted={false};
+        final Runnable[] dragStart={null};
+        dragStart[0]=()->{if(leftHeld[0]){dragStarted[0]=true;MouseAccessibilityService.beginDragFromKeyboard();}};
+        leftClick.setOnTouchListener((v,e)->{
+            if(e.getAction()==MotionEvent.ACTION_DOWN){
+                leftHeld[0]=true;dragStarted[0]=false;handler.postDelayed(dragStart[0],500);return true;
+            }
+            if(e.getAction()==MotionEvent.ACTION_UP || e.getAction()==MotionEvent.ACTION_CANCEL){
+                handler.removeCallbacks(dragStart[0]);
+                if(dragStarted[0]){MouseAccessibilityService.endDragFromKeyboard();dragStarted[0]=false;}
+                else if(e.getAction()==MotionEvent.ACTION_UP){MouseAccessibilityService.clickFromKeyboard(false);}
+                leftHeld[0]=false;return true;
+            }
+            return true;
+        });
         rightClick.setOnClickListener(v->MouseAccessibilityService.clickFromKeyboard(true));
 
         LinearLayout nav=new LinearLayout(this);
@@ -280,7 +302,7 @@ public class FastKeyboardService extends InputMethodService {
         addSystemMouseRepeat(right,0,1);
 
         TextView hint=new TextView(this);
-        hint.setText("نشانگر روی صفحه واقعی حرکت می‌کند؛ برای فعال‌سازی، موس سیستمی FKP_2 را در Accessibility روشن کنید.");
+        hint.setText("حرکت: تاچ‌پد | کلیک چپ: لمس | درگ: نگه‌داشتن کلیک چپ و حرکت تاچ‌پد | برای فعال‌سازی موس سیستمی، Accessibility را روشن کنید.");
         hint.setTextSize(11);
         hint.setTextColor(NAVY);
         hint.setGravity(Gravity.CENTER);
@@ -358,9 +380,11 @@ public class FastKeyboardService extends InputMethodService {
     private void showCalculator(View anchor){LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(8,8,8,8);box.setBackgroundColor(CREAM);TextView display=new TextView(this);display.setText("0");display.setTextSize(24);display.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);box.addView(display,new LinearLayout.LayoutParams(-1,dp(55)));String[] ks={"7","8","9","÷","4","5","6","×","1","2","3","−","0",".","=","+","C"};for(int i=0;i<ks.length;i+=4){LinearLayout r=new LinearLayout(this);for(int j=i;j<Math.min(i+4,ks.length);j++){String k=ks[j];Button b=key(k,18,NAVY,CREAM);r.addView(b,weight(1));b.setOnClickListener(v->{String old=display.getText().toString();String x=((Button)v).getText().toString();if(x.equals("C"))display.setText("0");else if(x.equals("="))display.setText(calculate(old));else display.setText(old.equals("0")?x:old+x);});}box.addView(r,new LinearLayout.LayoutParams(-1,dp(48)));}int[] loc=popupLocation(anchor);dismissPopup();activePopup=new PopupWindow(box,dp(280),dp(360),true);stylePopup(activePopup);showPopupAt(activePopup,loc[0],loc[1],360);}
     private String calculate(String s){try{String e=s.replace("×","*").replace("÷","/").replace("−","-");double v=new SimpleExpression(e).parse();return v==(long)v?Long.toString((long)v):Double.toString(v);}catch(Exception e){return "Error";}}
     private void showColorTablet(View anchor){LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(8,8,8,8);box.setBackgroundColor(CREAM);TextView title=new TextView(this);title.setText("انتخاب رنگ نمای کیبورد");title.setGravity(Gravity.CENTER);title.setTextSize(16);box.addView(title,new LinearLayout.LayoutParams(-1,dp(42)));int[] colors={0xFFFFFBF0,0xFFFFFFFF,0xFFFFF2CC,0xFFFFE4C4,0xFFFFD6D6,0xFFFFE0F0,0xFFE8D9FF,0xFFD9E8FF,0xFFD8F0FF,0xFFD8F5E5,0xFFE7F5D8,0xFFF5F5DC,0xFFE0E0E0,0xFFC8C8C8,0xFFB0BEC5,0xFF263238,0xFF102A43,0xFF1B4965,0xFF5C3D2E,0xFF6D597A,0xFF8D6E63,0xFF455A64,0xFF2E7D32,0xFF1565C0,0xFF6A1B9A,0xFFC62828,0xFFEF6C00,0xFFFFC107,0xFF00838F,0xFF00695C,0xFFAD1457,0xFF4E342E,0xFF37474F,0xFF1A237E,0xFF311B92,0xFF004D40,0xFF33691E,0xFF827717,0xFF3E2723,0xFF000000};for(int i=0;i<colors.length;i+=5){LinearLayout r=new LinearLayout(this);for(int j=i;j<Math.min(i+5,colors.length);j++){final int c=colors[j];Button sw=key("",1,NAVY,c);r.addView(sw,weight(1));sw.setOnClickListener(v->{keyboardColor=c;prefs.edit().putInt("keyboardColor",c).apply();if(currentRoot!=null)currentRoot.setBackgroundColor(c);});}box.addView(r,new LinearLayout.LayoutParams(-1,dp(48)));}dismissPopup();activePopup=new PopupWindow(box,dp(320),dp(395),true);stylePopup(activePopup);showPopupAtKeyboardTop(activePopup,395);}
-    private void showHistory(View anchor){if(history.isEmpty()){showGridPopup(anchor,new String[]{"تاریخچه خالی است"},42,120);return;}List<String> items=new ArrayList<>(history);Collections.reverse(items);if(items.size()>100)items=items.subList(0,100);showGridPopup(anchor,items.toArray(new String[0]),42,360);}
+    private void showHistory(View anchor){capturePrimaryClip();if(clipboardHistory.isEmpty()){showGridPopup(anchor,new String[]{"تاریخچه کلیپ‌بورد خالی است"},42,120);return;}List<String> items=new ArrayList<>(clipboardHistory);Collections.reverse(items);if(items.size()>100)items=items.subList(0,100);showGridPopup(anchor,items.toArray(new String[0]),42,360);}
     private void addHistory(String s){if(TextUtils.isEmpty(s))return;history.add(s);while(history.size()>100)history.remove(0);prefs.edit().putString("history",TextUtils.join("\u0001",history)).apply();}
     private void loadHistory(){String all=prefs.getString("history","");if(!TextUtils.isEmpty(all))history.addAll(Arrays.asList(all.split("\u0001",-1)));while(history.size()>100)history.remove(0);}
+    private void capturePrimaryClip(){if(clipboardManager==null||!clipboardManager.hasPrimaryClip())return;try{ClipData d=clipboardManager.getPrimaryClip();if(d==null||d.getItemCount()==0)return;CharSequence cs=d.getItemAt(0).coerceToText(this);if(cs==null)return;String text=cs.toString();if(TextUtils.isEmpty(text))return;if(!clipboardHistory.isEmpty()&&text.equals(clipboardHistory.get(clipboardHistory.size()-1)))return;clipboardHistory.add(text);while(clipboardHistory.size()>100)clipboardHistory.remove(0);prefs.edit().putString("clipboard_history",TextUtils.join("\u0001",clipboardHistory)).apply();}catch(Exception ignored){}}
+    private void loadClipboardHistory(){String all=prefs.getString("clipboard_history","");if(!TextUtils.isEmpty(all))clipboardHistory.addAll(Arrays.asList(all.split("\u0001",-1)));while(clipboardHistory.size()>100)clipboardHistory.remove(0);}
     private int dp(int v){return Math.round(v*getResources().getDisplayMetrics().density);}
     private static class Predictor {
         private final Map<String,Map<String,Integer>> next=new HashMap<>();

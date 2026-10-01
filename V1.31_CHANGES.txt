@@ -1,0 +1,26 @@
+FKP_3 v1.31 - requested fixes
+
+1. Third alphabet row
+- Persian/English third-row letters now use direct click handlers.
+- Each letter commits its character when pressed.
+- Temporary Caps behavior is preserved.
+
+2. System mouse cursor visibility
+- Cursor is shown when the keyboard input view opens.
+- Cursor is hidden when the keyboard input view finishes and when the keyboard service is destroyed.
+- Accessibility service connection alone no longer leaves the cursor permanently visible.
+
+3. Mouse screen interaction
+- Left click remains a real AccessibilityService screen tap through dispatchGesture.
+- A long press (about 0.5 s) on the left-click button enters drag mode.
+- While drag mode is active, moving the mouse touchpad also dispatches short screen swipe segments, allowing drag operations where the target accepts touch-drag gestures.
+- The cursor remains movable by the touchpad and direction controls.
+
+4. امکانات popup
+- The امکانات window uses a ScrollView with a fixed viewport so its contents can be scrolled when they exceed the available height.
+
+5. 100 History
+- The 100 History button now reads the app's collected clipboard history, not only the keyboard's old internal history list.
+- The keyboard registers ClipboardManager's primary-clip change listener and stores up to 100 distinct successive text clips.
+- The current primary clipboard is captured when the keyboard service starts and when the 100 History window is opened.
+- Android's public ClipboardManager exposes the current primary ClipData, not an API for importing another app's already-existing system clipboard-history list. Therefore existing history entries that were created before FKP_3 began collecting them cannot be imported through the public API; FKP_3 collects up to 100 clips from this point onward and persists them.
