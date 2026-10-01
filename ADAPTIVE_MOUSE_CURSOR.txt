@@ -1,0 +1,14 @@
+FKP_2 v1.23 - Adaptive Mouse Cursor
+
+The mouse cursor now has an adaptive-color helper:
+- light backgrounds -> black cursor
+- dark backgrounds -> white cursor
+- cursor outline uses the opposite color
+- low-contrast situations trigger a color change
+
+For a cursor that is drawn over the actual screen outside the IME, the
+AccessibilityService/overlay layer must sample the visible area under the
+cursor. The helper is intentionally separate so this screen-level layer can
+use it without changing the keyboard layout.
+
+The main keyboard layout and the top-row mouse button are unchanged.

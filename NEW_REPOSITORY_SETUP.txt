@@ -1,0 +1,13 @@
+FKP_3 - Fresh Repository
+
+Base: clean FKP_2/Fkyes_me_1 v1.30 test project.
+Purpose: fresh GitHub repository to isolate build history and avoid carrying the old repository state.
+
+Repository setup:
+1. Create a new empty GitHub repository named FKP_3.
+2. Do not initialize it with README, .gitignore, or License.
+3. Copy the contents of this ZIP directly into the repository root.
+4. In MGit: Stage All -> Commit -> Push.
+5. Then open Actions and run the Android build workflow.
+
+Important: this package intentionally contains no .git directory.

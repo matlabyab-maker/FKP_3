@@ -1,0 +1,7 @@
+FKP_2 v1.28 - Navy computer cursor
+
+The system-wide accessibility cursor keeps the classic desktop arrow shape.
+Fill: deep navy (#0A265C).
+Outline: darker navy (#020C22).
+The cursor hotspot remains at the upper-left arrow tip.
+The keyboard layout and other project functions are unchanged from v1.27.

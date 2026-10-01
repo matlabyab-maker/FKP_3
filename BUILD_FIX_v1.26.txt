@@ -1,0 +1,9 @@
+Build fix based on GitHub Actions log:
+MouseAccessibilityService.java failed because ScreenshotResult has no getBitmap().
+The screenshot API exposes a HardwareBuffer and ColorSpace. The code now
+uses ScreenshotResult.getHardwareBuffer()/getColorSpace(), wraps the buffer
+with Bitmap.wrapHardwareBuffer(), copies to ARGB_8888 for pixel sampling,
+then closes the buffer.
+
+The log showed no other compilation error. setup-java deprecation and
+Node.js warnings were warnings, not the build failure.

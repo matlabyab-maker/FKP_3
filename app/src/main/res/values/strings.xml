@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FKP_2</string>
+    <string name="subtype_persian">فارسی</string>
+    <string name="mouse_accessibility_description">موس سیستمی FKP_2 برای حرکت نشانگر و کنترل صفحه</string>
+</resources>
