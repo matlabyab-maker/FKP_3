@@ -10,8 +10,8 @@ android {
         applicationId 'com.fkp2.keyboard'
         minSdk 23
         targetSdk 35
-        versionCode 17
-        versionName '1.31'
+        versionCode 18
+        versionName '1.34'
     }
 }
 

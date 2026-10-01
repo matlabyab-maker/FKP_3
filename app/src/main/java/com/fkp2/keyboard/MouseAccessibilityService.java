@@ -12,8 +12,13 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
 import android.view.WindowManager;
+import android.view.View;
 import android.view.accessibility.AccessibilityEvent;
 import android.widget.TextView;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.view.MotionEvent;
+import android.graphics.Typeface;
 
 public class MouseAccessibilityService extends AccessibilityService {
     private static MouseAccessibilityService instance;
@@ -24,6 +29,8 @@ public class MouseAccessibilityService extends AccessibilityService {
     private int screenW, screenH;
     private int cursorSize;
     private boolean dragMode=false;
+    private View mousePanel;
+    private WindowManager.LayoutParams mousePanelLp;
 
     public static MouseAccessibilityService getInstance() { return instance; }
 
@@ -51,6 +58,84 @@ public class MouseAccessibilityService extends AccessibilityService {
         MouseAccessibilityService s=instance;
         if(s!=null) s.hideCursor();
     }
+
+    public boolean isMouseOverlayShown() { return mousePanel != null; }
+
+    public void showMouseOverlay() {
+        if (wm == null) return;
+        showCursor();
+        if (mousePanel != null) return;
+
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(8,8,8,8);
+        root.setBackgroundColor(Color.argb(238, 250, 250, 250));
+
+        TextView title = new TextView(this);
+        title.setText("موس FKP_3");
+        title.setTextSize(15);
+        title.setTextColor(Color.rgb(10,38,92));
+        title.setGravity(Gravity.CENTER);
+        root.addView(title, new LinearLayout.LayoutParams(-1, 38));
+
+        final TextView pad = new TextView(this);
+        pad.setText("میدان لمسی موس\nحرکت نشانگر روی کل صفحه");
+        pad.setTextSize(13);
+        pad.setTextColor(Color.rgb(10,38,92));
+        pad.setGravity(Gravity.CENTER);
+        GradientDrawable pg = new GradientDrawable();
+        pg.setColor(Color.rgb(232,236,242));
+        pg.setCornerRadius(10);
+        pad.setBackground(pg);
+        root.addView(pad, new LinearLayout.LayoutParams(-1, 125));
+
+        final float[] last = {0,0};
+        final boolean[] moving = {false};
+        pad.setOnTouchListener((v,e)->{
+            if (e.getAction()==MotionEvent.ACTION_DOWN) {
+                last[0]=e.getRawX(); last[1]=e.getRawY(); moving[0]=true; return true;
+            }
+            if (e.getAction()==MotionEvent.ACTION_MOVE && moving[0]) {
+                float dx=e.getRawX()-last[0], dy=e.getRawY()-last[1];
+                if (Math.abs(dx)>=0.5f || Math.abs(dy)>=0.5f) {
+                    moveRelative(dx*2.0f,dy*2.0f);
+                    last[0]=e.getRawX(); last[1]=e.getRawY();
+                }
+                return true;
+            }
+            if (e.getAction()==MotionEvent.ACTION_UP || e.getAction()==MotionEvent.ACTION_CANCEL) { moving[0]=false; return true; }
+            return true;
+        });
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        Button left = new Button(this); left.setText("کلیک چپ");
+        Button right = new Button(this); right.setText("کلیک راست");
+        row.addView(left,new LinearLayout.LayoutParams(0,58,1));
+        row.addView(right,new LinearLayout.LayoutParams(0,58,1));
+        root.addView(row);
+        left.setOnClickListener(v->click(false));
+        right.setOnClickListener(v->click(true));
+
+        mousePanel = root;
+        mousePanelLp = new WindowManager.LayoutParams(
+            Math.min(dp(330), screenW - dp(16)), dp(245),
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT);
+        mousePanelLp.gravity = Gravity.RIGHT | Gravity.BOTTOM;
+        mousePanelLp.x = dp(8); mousePanelLp.y = dp(72);
+        root.setElevation(30f);
+        wm.addView(root, mousePanelLp);
+    }
+
+    public void hideMouseOverlay() {
+        if (mousePanel != null && wm != null) { try { wm.removeView(mousePanel); } catch(Exception ignored) {} }
+        mousePanel = null; mousePanelLp = null;
+        hideCursor();
+    }
+
+    private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
 
     private void hideCursor() {
         if(cursor!=null && wm!=null){
@@ -176,6 +261,8 @@ public class MouseAccessibilityService extends AccessibilityService {
             try { wm.removeView(cursor); } catch (Exception ignored) {}
         }
         cursor = null;
+        if (mousePanel != null && wm != null) { try { wm.removeView(mousePanel); } catch(Exception ignored) {} }
+        mousePanel = null;
         super.onDestroy();
     }
 }

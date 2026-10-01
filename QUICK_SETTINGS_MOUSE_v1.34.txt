@@ -1,0 +1,12 @@
+FKP_3 v1.34 - Quick Settings Mouse
+
+A Quick Settings tile named "موس FKP_3" was added.
+When the Accessibility mouse service is enabled, tapping the tile toggles only the mouse overlay:
+- desktop-style navy cursor
+- touch field that moves the cursor over the whole screen
+- left/right click controls
+
+The overlay is independent of the keyboard, so it can be used while browsing websites or using other apps.
+Turning the tile off removes both the mouse field and cursor.
+
+Add the tile from Android Quick Settings edit screen after installing the APK.
