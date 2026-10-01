@@ -36,6 +36,8 @@ import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.LinkedHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 
@@ -60,6 +62,7 @@ public class FastKeyboardService extends InputMethodService {
     private LinearLayout currentRoot;
     private int keyboardColor=CREAM;
     private final Handler handler=new Handler();
+    private final ExecutorService suggestionExecutor=Executors.newSingleThreadExecutor();
     private final Predictor predictor=new Predictor();
     private final ArrayList<Button> suggestionButtons=new ArrayList<>();
     private PopupWindow activePopup;
@@ -90,7 +93,7 @@ public class FastKeyboardService extends InputMethodService {
     @Override public View onCreateInputView(){return buildKeyboard();}
     @Override public void onStartInputView(EditorInfo info,boolean restarting){super.onStartInputView(info,restarting);if(restarting)rebuild(); scheduleSuggestions();}
     @Override public void onFinishInputView(boolean finishingInput){super.onFinishInputView(finishingInput);MouseAccessibilityService.hideCursorFromKeyboard();}
-    @Override public void onDestroy(){if(clipboardManager!=null&&clipboardListener!=null){try{clipboardManager.removePrimaryClipChangedListener(clipboardListener);}catch(Exception ignored){}}MouseAccessibilityService.hideCursorFromKeyboard();super.onDestroy();}
+    @Override public void onDestroy(){handler.removeCallbacksAndMessages(null);suggestionExecutor.shutdownNow();if(clipboardManager!=null&&clipboardListener!=null){try{clipboardManager.removePrimaryClipChangedListener(clipboardListener);}catch(Exception ignored){}}MouseAccessibilityService.hideCursorFromKeyboard();super.onDestroy();}
     @Override public void onUpdateSelection(int oldSelStart,int oldSelEnd,int newSelStart,int newSelEnd,int candidatesStart,int candidatesEnd){super.onUpdateSelection(oldSelStart,oldSelEnd,newSelStart,newSelEnd,candidatesStart,candidatesEnd);scheduleSuggestions();}
 
     private LinearLayout buildKeyboard(){
@@ -180,20 +183,26 @@ public class FastKeyboardService extends InputMethodService {
     private GradientDrawable makeBg(int color){GradientDrawable gd=new GradientDrawable();gd.setColor(color);gd.setCornerRadius(8);gd.setStroke(1,Color.rgb(210,208,200));return gd;}
     private void scheduleSuggestions(){
         handler.removeCallbacks(suggestionUpdateRunnable);
-        handler.postDelayed(suggestionUpdateRunnable,70);
+        handler.postDelayed(suggestionUpdateRunnable,160);
     }
     private void updateSuggestions(){ scheduleSuggestions(); }
     private void updateSuggestionsNow(){
         if(suggestionButtons.isEmpty()) return;
         InputConnection ic=getCurrentInputConnection();
         String before="";
-        if(ic!=null){ CharSequence cs=ic.getTextBeforeCursor(100,0); if(cs!=null) before=cs.toString(); }
-        List<String> list=predictor.suggest(before,7);
-        for(int i=0;i<suggestionButtons.size();i++){
-            Button b=suggestionButtons.get(i);
-            if(i<list.size()){b.setText(list.get(i));b.setVisibility(View.VISIBLE);}
-            else {b.setText("");b.setVisibility(View.INVISIBLE);}
-        }
+        if(ic!=null){ CharSequence cs=ic.getTextBeforeCursor(80,0); if(cs!=null) before=cs.toString(); }
+        final String context=before;
+        suggestionExecutor.execute(() -> {
+            final List<String> list=predictor.suggest(context,7);
+            handler.post(() -> {
+                if(suggestionButtons.isEmpty()) return;
+                for(int i=0;i<suggestionButtons.size();i++){
+                    Button b=suggestionButtons.get(i);
+                    if(i<list.size()){b.setText(list.get(i));b.setVisibility(View.VISIBLE);}
+                    else {b.setText("");b.setVisibility(View.INVISIBLE);}
+                }
+            });
+        });
     }
     private void applySuggestion(String suggestion){
         InputConnection ic=getCurrentInputConnection(); if(ic==null) return;
@@ -399,16 +408,21 @@ public class FastKeyboardService extends InputMethodService {
     private static class Predictor {
         private final Map<String,Map<String,Integer>> next=new HashMap<>();
         private final Map<String,Integer> common=new LinkedHashMap<>();
+        private volatile List<Map.Entry<String,Integer>> commonSorted=Collections.emptyList();
+        private volatile String lastSuggestionKey="";
+        private volatile List<String> lastSuggestionValue=Collections.emptyList();
         Predictor(){
         }
         void seed(String a,String b,int n){next.computeIfAbsent(a,k->new HashMap<>()).put(b,n);}
-        void observeWord(String w){ common.put(w,common.getOrDefault(w,0)+1); }
+        synchronized void observeWord(String w){ common.put(w,common.getOrDefault(w,0)+1); commonSorted=Collections.emptyList(); lastSuggestionKey=""; }
         void observePunctuation(String p){}
         void learnFromContext(String text){
             String clean=text.replaceAll("[،,؛;:!?؟\\\"()\\[\\]{}]"," ").trim(); if(clean.isEmpty()) return;
             String[] ws=clean.split("\\s+"); if(ws.length>=2){String a=ws[ws.length-2], b=ws[ws.length-1]; seed(a,b,next.getOrDefault(a,new HashMap<>()).getOrDefault(b,0)+1);} if(ws.length>=1) observeWord(ws[ws.length-1]);
         }
-        List<String> suggest(String before,int max){
+        synchronized List<String> suggest(String before,int max){
+            String cacheKey=(before==null?"":before);
+            if(cacheKey.equals(lastSuggestionKey) && lastSuggestionValue.size()<=max) return new ArrayList<>(lastSuggestionValue);
             ArrayList<String> out=new ArrayList<>();
             String raw=before==null?"":before;
             String normalized=normalize(raw);
@@ -416,7 +430,9 @@ public class FastKeyboardService extends InputMethodService {
             boolean partial=!normalized.isEmpty() && !Character.isWhitespace(normalized.charAt(normalized.length()-1)) && !last.isEmpty();
             if(partial){
                 final String prefix=last;
-                ArrayList<Map.Entry<String,Integer>> c=new ArrayList<>(common.entrySet());
+                ArrayList<Map.Entry<String,Integer>> c=new ArrayList<>();
+                for(Map.Entry<String,Integer> e:getCommonSorted()){c.add(e);}
+
                 c.removeIf(e->{String w=normalize(e.getKey()); return w.length()<=prefix.length() || !w.startsWith(prefix);});
                 c.sort((x,y)->{
                     String wx=normalize(x.getKey()), wy=normalize(y.getKey());
@@ -425,7 +441,9 @@ public class FastKeyboardService extends InputMethodService {
                     return n!=0?n:Integer.compare(wx.length(),wy.length());
                 });
                 for(Map.Entry<String,Integer> e:c){String w=e.getKey();if(!out.contains(w))out.add(w);if(out.size()>=max)break;}
-                return out;
+                List<String> result=new ArrayList<>(out.subList(0,Math.min(max,out.size())));
+                lastSuggestionKey=cacheKey; lastSuggestionValue=result;
+                return new ArrayList<>(result);
             }
             Map<String,Integer> m=next.get(last);
             if(m!=null) addSorted(out,m);
@@ -433,11 +451,19 @@ public class FastKeyboardService extends InputMethodService {
             else if(looksExclamation(normalized) && out.size()<max) out.add("!");
             // After a completed word, prefer context learned from that word; only then use general words.
             if(out.size()<max){
-                ArrayList<Map.Entry<String,Integer>> c=new ArrayList<>(common.entrySet());
-                c.sort((x,y)->Integer.compare(y.getValue(),x.getValue()));
+                ArrayList<Map.Entry<String,Integer>> c=new ArrayList<>(getCommonSorted());
                 for(Map.Entry<String,Integer> e:c){if(!out.contains(e.getKey())){out.add(e.getKey());if(out.size()>=max)break;}}
             }
-            return out.subList(0,Math.min(max,out.size()));
+            List<String> result=new ArrayList<>(out.subList(0,Math.min(max,out.size())));
+            lastSuggestionKey=cacheKey; lastSuggestionValue=result;
+            return new ArrayList<>(result);
+        }
+        private List<Map.Entry<String,Integer>> getCommonSorted(){
+            if(!commonSorted.isEmpty() || common.isEmpty()) return commonSorted;
+            ArrayList<Map.Entry<String,Integer>> c=new ArrayList<>(common.entrySet());
+            c.sort((x,y)->Integer.compare(y.getValue(),x.getValue()));
+            commonSorted=c;
+            return commonSorted;
         }
         private int prefixScore(String word,String prefix,int freq){
             int score=freq*4;

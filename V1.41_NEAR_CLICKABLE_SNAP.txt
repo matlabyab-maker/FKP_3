@@ -1,0 +1,9 @@
+FKP_3 v1.41
+
+Auto-target behavior changed to near-target snap:
+- The auto mode no longer cycles through clickable controls or jumps to distant items.
+- While enabled, after mouse movement the service checks Accessibility clickable controls.
+- If the cursor hotspot is within approximately 1 mm of a clickable control's bounds, the hotspot snaps to the nearest point inside that control.
+- It does not click automatically.
+- 1 mm is converted using the display's physical xdpi.
+- The Accessibility tree is checked only after pointer movement, avoiding a continuous 900 ms scan that could contribute to typing/UI lag.

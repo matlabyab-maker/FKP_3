@@ -35,9 +35,8 @@ public class MouseAccessibilityService extends AccessibilityService {
     private Button autoTargetButton;
     private final Runnable autoTargetRunnable = new Runnable() {
         @Override public void run() {
-            if (!autoTargetMode || mousePanel == null || cursor == null) return;
-            moveToNextClickableTarget();
-            handler.postDelayed(this, 900);
+            // Snap is checked directly after pointer movement; no periodic tree scan.
+            if (autoTargetMode) handler.postDelayed(this, 250);
         }
     };
 
@@ -190,8 +189,9 @@ public class MouseAccessibilityService extends AccessibilityService {
         }
         handler.removeCallbacks(autoTargetRunnable);
         if (autoTargetMode) {
-            moveToNextClickableTarget();
-            handler.postDelayed(autoTargetRunnable, 900);
+            // Do not jump to distant controls. Snapping happens only when the
+            // cursor is within about 1 mm of a clickable item's bounds.
+            snapToNearbyClickable();
         }
     }
 
@@ -199,6 +199,56 @@ public class MouseAccessibilityService extends AccessibilityService {
         autoTargetMode = false;
         handler.removeCallbacks(autoTargetRunnable);
         if (autoTargetButton != null) autoTargetButton.setText("حرکت خودکار: خاموش");
+    }
+
+    private void snapToNearbyClickable() {
+        if (!autoTargetMode || cursor == null) return;
+        android.view.accessibility.AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return;
+        java.util.ArrayList<android.view.accessibility.AccessibilityNodeInfo> targets = new java.util.ArrayList<>();
+        try {
+            collectClickableTargets(root, targets);
+        } finally {
+            root.recycle();
+        }
+        if (targets.isEmpty()) return;
+
+        // Convert 1 mm to physical pixels for the current display.
+        android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+        float pxPerMm = Math.max(1f, dm.xdpi / 25.4f);
+        float threshold = pxPerMm;
+        float hx = x + 2f;
+        float hy = y + 2f;
+        android.view.accessibility.AccessibilityNodeInfo best = null;
+        android.graphics.Rect bestRect = null;
+        float bestDist = Float.MAX_VALUE;
+        try {
+            for (android.view.accessibility.AccessibilityNodeInfo n : targets) {
+                android.graphics.Rect r = new android.graphics.Rect();
+                n.getBoundsInScreen(r);
+                if (r.width() <= 0 || r.height() <= 0) continue;
+                float nx = Math.max(r.left, Math.min(hx, r.right));
+                float ny = Math.max(r.top, Math.min(hy, r.bottom));
+                float dx = hx - nx;
+                float dy = hy - ny;
+                float dist = (float)Math.sqrt(dx * dx + dy * dy);
+                if (dist <= threshold && dist < bestDist) {
+                    bestDist = dist;
+                    best = n;
+                    bestRect = r;
+                }
+            }
+            if (best != null && bestRect != null) {
+                // Put the hotspot on the nearest point inside the clickable bounds.
+                float nx = Math.max(bestRect.left, Math.min(hx, bestRect.right));
+                float ny = Math.max(bestRect.top, Math.min(hy, bestRect.bottom));
+                moveCursorToScreenPoint(nx - 2f, ny - 2f);
+            }
+        } finally {
+            for (android.view.accessibility.AccessibilityNodeInfo n : targets) {
+                try { n.recycle(); } catch (Exception ignored) {}
+            }
+        }
     }
 
     private void moveToNextClickableTarget() {
@@ -355,6 +405,7 @@ public class MouseAccessibilityService extends AccessibilityService {
         lp.x = Math.round(x);
         lp.y = Math.round(y);
         wm.updateViewLayout(cursor, lp);
+        if (autoTargetMode) snapToNearbyClickable();
         if(dragMode && Build.VERSION.SDK_INT>=24){
             dispatchSwipe(oldX+3f,oldY+3f,x+3f,y+3f,90);
         }

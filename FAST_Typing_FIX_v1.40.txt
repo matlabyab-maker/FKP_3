@@ -1,0 +1,12 @@
+FKP_3 v1.40 – Fast typing responsiveness
+
+Changes:
+- Suggestion updates are debounced to 160 ms instead of 70 ms.
+- Suggestion calculation runs off the keyboard UI thread and only the final button update returns to the UI thread.
+- Suggestion context is limited to 80 characters.
+- Frequently used suggestion candidates are cached and sorted only when the learned list changes.
+- Executor is stopped when the keyboard service is destroyed.
+- Keyboard layout, mouse, History, Tools and other existing features are otherwise unchanged.
+
+Purpose:
+Reduce visible pauses/hangs during rapid Persian and English typing without removing the suggestion bar.
