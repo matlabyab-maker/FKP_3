@@ -1,0 +1,6 @@
+FKP_3 v1.42
+- Mouse panel header enlarged to 72dp, with a dedicated top-right drag handle.
+- Panel has a visible outer border and rounded corners.
+- Panel size increased so existing controls have comfortable space.
+- Auto-target snap radius changed from 1 mm to 30 mm, scaled using physical display DPI.
+- Only the dedicated top-right handle moves the panel.

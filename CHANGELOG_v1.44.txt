@@ -1,0 +1,5 @@
+FKP_3 v1.44
+- Hold the left mouse button while moving the mouse field to generate drag/selection gestures. Simple press/release remains a left click.
+- Four visible corner handles resize the mouse window.
+- Mouse panel uses top-left window positioning for predictable resizing.
+- Existing close, move, auto-target, mouse and keyboard functions are retained.

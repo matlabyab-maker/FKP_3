@@ -1,0 +1,6 @@
+FKP_3 v1.43
+
+- Added Close button to the system mouse overlay.
+- Kept draggable handle.
+- Opening the keyboard Mouse panel now calls the active Accessibility mouse service to show its system mouse overlay, so keyboard mouse click buttons have an active service target.
+- No unrelated keyboard layout changes.

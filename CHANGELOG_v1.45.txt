@@ -1,0 +1,12 @@
+FKP_3 v1.45 - Adjustable Mouse Window Transparency
+
+Changes:
+- Added a transparency control (SeekBar) to the mouse window.
+- Transparency can be adjusted from 20% to 100% opacity.
+- The selected value is shown as a percentage.
+- The selected transparency is saved and restored the next time the mouse window is opened.
+- The entire mouse panel, including its controls, follows the selected opacity.
+- Existing mouse dragging, resizing, close button, clickable-target snap, and left/right click controls are preserved.
+- No keyboard layout changes were made.
+
+Note: Android Build was not executed in this environment; ZIP integrity was verified.

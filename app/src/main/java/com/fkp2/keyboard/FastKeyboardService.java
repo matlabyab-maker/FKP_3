@@ -231,6 +231,8 @@ public class FastKeyboardService extends InputMethodService {
 
     private void showMouse(View anchor){
         dismissPopup();
+        MouseAccessibilityService mouseService = MouseAccessibilityService.getInstance();
+        if (mouseService != null) mouseService.showMouseOverlay();
         LinearLayout box=new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(8,8,8,8);

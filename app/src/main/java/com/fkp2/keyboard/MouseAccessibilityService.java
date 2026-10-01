@@ -15,8 +15,10 @@ import android.view.WindowManager;
 import android.view.View;
 import android.view.accessibility.AccessibilityEvent;
 import android.widget.TextView;
+import android.widget.FrameLayout;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.SeekBar;
 import android.view.MotionEvent;
 import android.graphics.Typeface;
 
@@ -79,20 +81,51 @@ public class MouseAccessibilityService extends AccessibilityService {
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(8,8,8,8);
-        root.setBackgroundColor(Color.argb(238, 250, 250, 250));
+        root.setPadding(dp(8),dp(8),dp(8),dp(8));
+        GradientDrawable panelBg = new GradientDrawable();
+        panelBg.setColor(Color.argb(245, 250, 250, 250));
+        panelBg.setStroke(dp(2), Color.rgb(45,45,55));
+        panelBg.setCornerRadius(dp(12));
+        root.setBackground(panelBg);
+
+        // Larger header so all controls remain comfortable to touch.
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        GradientDrawable headerBg = new GradientDrawable();
+        headerBg.setColor(Color.rgb(238,242,248));
+        headerBg.setStroke(dp(1), Color.rgb(70,70,80));
+        headerBg.setCornerRadius(dp(8));
+        header.setBackground(headerBg);
 
         TextView title = new TextView(this);
         title.setText("موس FKP_3");
-        title.setTextSize(15);
+        title.setTextSize(16);
         title.setTextColor(Color.rgb(10,38,92));
         title.setGravity(Gravity.CENTER);
-        title.setText("موس FKP_3  •  برای جابه‌جایی بکشید");
-        root.addView(title, new LinearLayout.LayoutParams(-1, 38));
+        header.addView(title, new LinearLayout.LayoutParams(0, dp(68), 1f));
+
+        Button dragHandle = new Button(this);
+        dragHandle.setText("↕\nجابه‌جایی");
+        dragHandle.setTextSize(11);
+        dragHandle.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams handleLp = new LinearLayout.LayoutParams(dp(82), dp(60));
+        handleLp.rightMargin = dp(4);
+
+        Button closeButton = new Button(this);
+        closeButton.setText("✕\nبستن");
+        closeButton.setTextSize(11);
+        closeButton.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams closeLp = new LinearLayout.LayoutParams(dp(82), dp(60));
+        closeLp.rightMargin = dp(2);
+        header.addView(dragHandle, handleLp);
+        header.addView(closeButton, closeLp);
+        root.addView(header, new LinearLayout.LayoutParams(-1, dp(72)));
+        closeButton.setOnClickListener(v -> hideMouseOverlay());
 
         final float[] panelLast = {0f,0f};
         final boolean[] panelMoving = {false};
-        title.setOnTouchListener((v,e)->{
+        dragHandle.setOnTouchListener((v,e)->{
             if (mousePanelLp == null || wm == null) return false;
             if (e.getAction()==MotionEvent.ACTION_DOWN) {
                 panelLast[0]=e.getRawX();
@@ -159,7 +192,57 @@ public class MouseAccessibilityService extends AccessibilityService {
         row.addView(left,new LinearLayout.LayoutParams(0,58,1));
         row.addView(right,new LinearLayout.LayoutParams(0,58,1));
         root.addView(row);
-        left.setOnClickListener(v->click(false));
+
+        // Adjustable transparency for the whole mouse window.
+        LinearLayout transparencyRow = new LinearLayout(this);
+        transparencyRow.setOrientation(LinearLayout.HORIZONTAL);
+        transparencyRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView transparencyLabel = new TextView(this);
+        transparencyLabel.setText("شفافیت");
+        transparencyLabel.setTextSize(13);
+        transparencyLabel.setTextColor(Color.rgb(10,38,92));
+        transparencyRow.addView(transparencyLabel, new LinearLayout.LayoutParams(dp(58), dp(42)));
+        SeekBar transparencyBar = new SeekBar(this);
+        transparencyBar.setMax(80);
+        int savedTransparency = getSharedPreferences("mouse_settings", MODE_PRIVATE).getInt("panel_transparency", 100);
+        savedTransparency = Math.max(20, Math.min(100, savedTransparency));
+        transparencyBar.setProgress(savedTransparency - 20);
+        transparencyRow.addView(transparencyBar, new LinearLayout.LayoutParams(0, dp(42), 1f));
+        TextView transparencyValue = new TextView(this);
+        transparencyValue.setText(savedTransparency + "%");
+        transparencyValue.setTextSize(12);
+        transparencyValue.setGravity(Gravity.CENTER);
+        transparencyValue.setTextColor(Color.rgb(10,38,92));
+        transparencyRow.addView(transparencyValue, new LinearLayout.LayoutParams(dp(48), dp(42)));
+        root.addView(transparencyRow, new LinearLayout.LayoutParams(-1, dp(46)));
+        root.setAlpha(savedTransparency / 100f);
+        transparencyBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
+                int value = Math.max(20, Math.min(100, progress + 20));
+                root.setAlpha(value / 100f);
+                transparencyValue.setText(value + "%");
+                if (fromUser) getSharedPreferences("mouse_settings", MODE_PRIVATE).edit().putInt("panel_transparency", value).apply();
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar) {}
+            @Override public void onStopTrackingTouch(SeekBar bar) {}
+        });
+
+        // Hold the left button while moving the mouse field to drag/select.
+        // A normal press and release remains a regular left click.
+        left.setOnTouchListener((v,e)->{
+            if (e.getAction()==MotionEvent.ACTION_DOWN) {
+                beginDragFromKeyboard();
+                v.setPressed(true);
+                return true;
+            }
+            if (e.getAction()==MotionEvent.ACTION_UP || e.getAction()==MotionEvent.ACTION_CANCEL) {
+                endDragFromKeyboard();
+                v.setPressed(false);
+                if (e.getAction()==MotionEvent.ACTION_UP) click(false);
+                return true;
+            }
+            return true;
+        });
         right.setOnClickListener(v->click(true));
 
         autoTargetButton = new Button(this);
@@ -170,16 +253,83 @@ public class MouseAccessibilityService extends AccessibilityService {
         root.addView(autoTargetButton, autoLp);
         autoTargetButton.setOnClickListener(v -> toggleAutoTargetMode());
 
-        mousePanel = root;
+        // Wrap the existing content so four corner handles can be overlaid.
+        FrameLayout panel = new FrameLayout(this);
+        panel.setClipChildren(false);
+        panel.setClipToPadding(false);
+        panel.addView(root, new FrameLayout.LayoutParams(-1, -1));
+        addResizeHandle(panel, Gravity.LEFT | Gravity.TOP, -1, -1);
+        addResizeHandle(panel, Gravity.RIGHT | Gravity.TOP, 1, -1);
+        addResizeHandle(panel, Gravity.LEFT | Gravity.BOTTOM, -1, 1);
+        addResizeHandle(panel, Gravity.RIGHT | Gravity.BOTTOM, 1, 1);
+
+        mousePanel = panel;
+        int initialW = Math.min(dp(400), screenW - dp(16));
+        int initialH = dp(390);
         mousePanelLp = new WindowManager.LayoutParams(
-            Math.min(dp(330), screenW - dp(16)), dp(305),
+            initialW, initialH,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT);
-        mousePanelLp.gravity = Gravity.RIGHT | Gravity.BOTTOM;
-        mousePanelLp.x = dp(8); mousePanelLp.y = dp(72);
-        root.setElevation(30f);
-        wm.addView(root, mousePanelLp);
+        mousePanelLp.gravity = Gravity.TOP | Gravity.LEFT;
+        mousePanelLp.x = Math.max(0, screenW - initialW - dp(8));
+        mousePanelLp.y = dp(72);
+        panel.setElevation(30f);
+        wm.addView(panel, mousePanelLp);
+    }
+
+    private void addResizeHandle(FrameLayout panel, int gravity, int horizontalDir, int verticalDir) {
+        TextView handle = new TextView(this);
+        String glyph;
+        if (horizontalDir < 0 && verticalDir < 0) glyph = "↖";
+        else if (horizontalDir > 0 && verticalDir < 0) glyph = "↗";
+        else if (horizontalDir < 0 && verticalDir > 0) glyph = "↙";
+        else glyph = "↘";
+        handle.setText(glyph);
+        handle.setTextSize(18);
+        handle.setTextColor(Color.rgb(10,38,92));
+        handle.setGravity(Gravity.CENTER);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.argb(235,225,232,242));
+        bg.setStroke(dp(1), Color.rgb(45,45,55));
+        bg.setCornerRadius(dp(6));
+        handle.setBackground(bg);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(dp(38), dp(38));
+        lp.gravity = gravity;
+        panel.addView(handle, lp);
+
+        final float[] last = {0f,0f};
+        handle.setOnTouchListener((v,e)->{
+            if (mousePanelLp == null || wm == null) return false;
+            if (e.getAction()==MotionEvent.ACTION_DOWN) {
+                last[0]=e.getRawX(); last[1]=e.getRawY();
+                return true;
+            }
+            if (e.getAction()==MotionEvent.ACTION_MOVE) {
+                float dx=e.getRawX()-last[0], dy=e.getRawY()-last[1];
+                int minW=dp(260), minH=dp(230);
+                int maxW=Math.max(minW,screenW-dp(12));
+                int maxH=Math.max(minH,screenH-dp(12));
+                int oldW=mousePanelLp.width, oldH=mousePanelLp.height;
+                int newW=oldW, newH=oldH;
+                if (horizontalDir > 0) newW += Math.round(dx);
+                else newW -= Math.round(dx);
+                if (verticalDir > 0) newH += Math.round(dy);
+                else newH -= Math.round(dy);
+                newW=Math.max(minW,Math.min(maxW,newW));
+                newH=Math.max(minH,Math.min(maxH,newH));
+                if (horizontalDir < 0) mousePanelLp.x += oldW-newW;
+                if (verticalDir < 0) mousePanelLp.y += oldH-newH;
+                mousePanelLp.width=newW;
+                mousePanelLp.height=newH;
+                mousePanelLp.x=Math.max(0,Math.min(screenW-newW,mousePanelLp.x));
+                mousePanelLp.y=Math.max(0,Math.min(screenH-newH,mousePanelLp.y));
+                try { wm.updateViewLayout(mousePanel,mousePanelLp); } catch(Exception ignored) {}
+                last[0]=e.getRawX(); last[1]=e.getRawY();
+                return true;
+            }
+            return true;
+        });
     }
 
     private void toggleAutoTargetMode() {
@@ -213,10 +363,14 @@ public class MouseAccessibilityService extends AccessibilityService {
         }
         if (targets.isEmpty()) return;
 
-        // Convert 1 mm to physical pixels for the current display.
+        // Requested snap radius: 30 mm from the clickable bounds.
+        // Use the physical display density so the distance is approximately
+        // the same physical size across different screens.
         android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
-        float pxPerMm = Math.max(1f, dm.xdpi / 25.4f);
-        float threshold = pxPerMm;
+        float pxPerMmX = Math.max(1f, dm.xdpi / 25.4f);
+        float pxPerMmY = Math.max(1f, dm.ydpi / 25.4f);
+        float thresholdX = pxPerMmX * 30f;
+        float thresholdY = pxPerMmY * 30f;
         float hx = x + 2f;
         float hy = y + 2f;
         android.view.accessibility.AccessibilityNodeInfo best = null;
@@ -231,8 +385,10 @@ public class MouseAccessibilityService extends AccessibilityService {
                 float ny = Math.max(r.top, Math.min(hy, r.bottom));
                 float dx = hx - nx;
                 float dy = hy - ny;
-                float dist = (float)Math.sqrt(dx * dx + dy * dy);
-                if (dist <= threshold && dist < bestDist) {
+                float normalizedX = dx / Math.max(1f, thresholdX);
+                float normalizedY = dy / Math.max(1f, thresholdY);
+                float dist = (float)Math.sqrt(normalizedX * normalizedX + normalizedY * normalizedY);
+                if (dist <= 1f && dist < bestDist) {
                     bestDist = dist;
                     best = n;
                     bestRect = r;
@@ -407,7 +563,7 @@ public class MouseAccessibilityService extends AccessibilityService {
         wm.updateViewLayout(cursor, lp);
         if (autoTargetMode) snapToNearbyClickable();
         if(dragMode && Build.VERSION.SDK_INT>=24){
-            dispatchSwipe(oldX+3f,oldY+3f,x+3f,y+3f,90);
+            dispatchSwipe(oldX+3f,oldY+3f,x+3f,y+3f,35);
         }
     }
 
