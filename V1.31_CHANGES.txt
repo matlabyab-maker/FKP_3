@@ -1,4 +1,4 @@
-FKP_3 v1.31 - requested fixes
+FKP_3 v1.32 - requested fixes
 
 1. Third alphabet row
 - Persian/English third-row letters now use direct click handlers.

@@ -63,6 +63,7 @@ public class FastKeyboardService extends InputMethodService {
     private final Predictor predictor=new Predictor();
     private final ArrayList<Button> suggestionButtons=new ArrayList<>();
     private PopupWindow activePopup;
+    private final Runnable suggestionUpdateRunnable=()->updateSuggestionsNow();
 
     private static final String[] PERSIAN_NUMBERS={"۱","۲","۳","۴","۵","۶","۷","۸","۹","۰"};
     private static final String[] NUMBER_MARKS={"!","@","#","$","%","^","&","*","(",")"};
@@ -87,10 +88,10 @@ public class FastKeyboardService extends InputMethodService {
 
     @Override public void onCreate(){super.onCreate();prefs=getSharedPreferences("fkp2",Context.MODE_PRIVATE);loadHistory();loadClipboardHistory();clipboardManager=(ClipboardManager)getSystemService(CLIPBOARD_SERVICE);clipboardListener=()->capturePrimaryClip();if(clipboardManager!=null){clipboardManager.addPrimaryClipChangedListener(clipboardListener);capturePrimaryClip();}keyboardColor=prefs.getInt("keyboardColor",CREAM); if(!prefs.getBoolean("suggestions_cleared_v19",false)){prefs.edit().remove("predictor").remove("suggestions_seed").putBoolean("suggestions_cleared_v19",true).apply();} predictor.load(prefs);}
     @Override public View onCreateInputView(){return buildKeyboard();}
-    @Override public void onStartInputView(EditorInfo info,boolean restarting){super.onStartInputView(info,restarting);if(restarting)rebuild(); updateSuggestions();}
+    @Override public void onStartInputView(EditorInfo info,boolean restarting){super.onStartInputView(info,restarting);if(restarting)rebuild(); scheduleSuggestions();}
     @Override public void onFinishInputView(boolean finishingInput){super.onFinishInputView(finishingInput);MouseAccessibilityService.hideCursorFromKeyboard();}
     @Override public void onDestroy(){if(clipboardManager!=null&&clipboardListener!=null){try{clipboardManager.removePrimaryClipChangedListener(clipboardListener);}catch(Exception ignored){}}MouseAccessibilityService.hideCursorFromKeyboard();super.onDestroy();}
-    @Override public void onUpdateSelection(int oldSelStart,int oldSelEnd,int newSelStart,int newSelEnd,int candidatesStart,int candidatesEnd){super.onUpdateSelection(oldSelStart,oldSelEnd,newSelStart,newSelEnd,candidatesStart,candidatesEnd);updateSuggestions();}
+    @Override public void onUpdateSelection(int oldSelStart,int oldSelEnd,int newSelStart,int newSelEnd,int candidatesStart,int candidatesEnd){super.onUpdateSelection(oldSelStart,oldSelEnd,newSelStart,newSelEnd,candidatesStart,candidatesEnd);scheduleSuggestions();}
 
     private LinearLayout buildKeyboard(){
         LinearLayout root=new LinearLayout(this);currentRoot=root;root.setOrientation(LinearLayout.VERTICAL);root.setPadding(1,1,1,1);root.setBackgroundColor(keyboardColor);root.setLayoutParams(new ViewGroup.LayoutParams(-1,-1));
@@ -100,7 +101,7 @@ public class FastKeyboardService extends InputMethodService {
         String[] icons={"⧉","▣","▣","✂","↶","↷","▤","⚙","➤","↕"};
         for(int i=0;i<labels.length;i++){Button b=keyWithIcon(labels[i],icons[i],12,NAVY,CREAM);tools.addView(b,weight(1));final int n=i;switch(n){case 0:b.setOnClickListener(v->copyAll());break;case 1:b.setOnClickListener(v->copyAll());break;case 2:b.setOnClickListener(v->paste());break;case 3:b.setOnClickListener(v->cut());break;case 4:b.setOnClickListener(v->ctrlKey(KeyEvent.KEYCODE_Z));break;case 5:b.setOnClickListener(v->ctrlKey(KeyEvent.KEYCODE_Y));break;case 6:b.setOnClickListener(v->showHistory(v));break;case 7:b.setOnClickListener(v->showTools(v));break;case 8:b.setOnClickListener(this::showMouse);break;default:b.setOnClickListener(v->toggleResize());}}
         root.addView(tools);
-        LinearLayout suggestions=row(.62f); suggestionButtons.clear(); for(int i=0;i<7;i++){Button b=key("",14,NAVY,CREAM); suggestions.addView(b,weight(1)); suggestionButtons.add(b); final int idx=i; b.setOnClickListener(v->{String text=((Button)v).getText().toString(); if(!text.isEmpty()) applySuggestion(text);});} root.addView(suggestions); root.post(this::updateSuggestions);
+        LinearLayout suggestions=row(.62f); suggestionButtons.clear(); for(int i=0;i<7;i++){Button b=key("",14,NAVY,CREAM); suggestions.addView(b,weight(1)); suggestionButtons.add(b); final int idx=i; b.setOnClickListener(v->{String text=((Button)v).getText().toString(); if(!text.isEmpty()) applySuggestion(text);});} root.addView(suggestions); root.post(this::scheduleSuggestions);
         LinearLayout nums=row(1f);String[] numsText=english?new String[]{"1","2","3","4","5","6","7","8","9","0"}:PERSIAN_NUMBERS;for(int i=0;i<10;i++){Button b=dualKey(numsText[i],NUMBER_MARKS[i],19,BROWN,RED,CREAM);nums.addView(b,weight(1));addDualKeyBehavior(b, numsText[i], NUMBER_MARKS[i]);}Button back=key("⌫",22,NAVY,PINK);nums.addView(back,weight(1.45f));addBackspaceRepeat(back);root.addView(nums);
         LinearLayout letters=new LinearLayout(this);letters.setOrientation(LinearLayout.HORIZONTAL);letters.setLayoutParams(new LinearLayout.LayoutParams(-1,0,2f));
         LinearLayout letterRows=new LinearLayout(this);letterRows.setOrientation(LinearLayout.VERTICAL);letterRows.setLayoutParams(new LinearLayout.LayoutParams(0,-1,11f));
@@ -177,31 +178,40 @@ public class FastKeyboardService extends InputMethodService {
     private LinearLayout row(float w){LinearLayout r=new LinearLayout(this);r.setOrientation(LinearLayout.HORIZONTAL);r.setGravity(Gravity.FILL);r.setPadding(0,0,0,0);r.setLayoutParams(new LinearLayout.LayoutParams(-1,0,w));return r;}
     private LinearLayout.LayoutParams weight(float w){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-1,w);p.setMargins(0,0,0,0);return p;}
     private GradientDrawable makeBg(int color){GradientDrawable gd=new GradientDrawable();gd.setColor(color);gd.setCornerRadius(8);gd.setStroke(1,Color.rgb(210,208,200));return gd;}
-    private void updateSuggestions(){
+    private void scheduleSuggestions(){
+        handler.removeCallbacks(suggestionUpdateRunnable);
+        handler.postDelayed(suggestionUpdateRunnable,70);
+    }
+    private void updateSuggestions(){ scheduleSuggestions(); }
+    private void updateSuggestionsNow(){
         if(suggestionButtons.isEmpty()) return;
         InputConnection ic=getCurrentInputConnection();
         String before="";
-        if(ic!=null){ CharSequence cs=ic.getTextBeforeCursor(160,0); if(cs!=null) before=cs.toString(); }
+        if(ic!=null){ CharSequence cs=ic.getTextBeforeCursor(100,0); if(cs!=null) before=cs.toString(); }
         List<String> list=predictor.suggest(before,7);
-        for(int i=0;i<suggestionButtons.size();i++){ Button b=suggestionButtons.get(i); if(i<list.size()){b.setText(list.get(i));b.setVisibility(View.VISIBLE);}else{b.setText("");b.setVisibility(View.INVISIBLE);} }
+        for(int i=0;i<suggestionButtons.size();i++){
+            Button b=suggestionButtons.get(i);
+            if(i<list.size()){b.setText(list.get(i));b.setVisibility(View.VISIBLE);}
+            else {b.setText("");b.setVisibility(View.INVISIBLE);}
+        }
     }
     private void applySuggestion(String suggestion){
         InputConnection ic=getCurrentInputConnection(); if(ic==null) return;
-        if(suggestion.equals("؟")||suggestion.equals("!")){ ic.commitText(suggestion+" ",1); predictor.observePunctuation(suggestion); updateSuggestions(); return; }
+        if(suggestion.equals("؟")||suggestion.equals("!")){ ic.commitText(suggestion+" ",1); predictor.observePunctuation(suggestion); scheduleSuggestions(); return; }
         CharSequence cs=ic.getTextBeforeCursor(80,0); String before=cs==null?"":cs.toString();
         String prefix=predictor.lastWord(before);
         if(!prefix.isEmpty() && !before.isEmpty() && !Character.isWhitespace(before.charAt(before.length()-1)) && predictor.normalize(suggestion).startsWith(predictor.normalize(prefix))){ ic.deleteSurroundingText(prefix.length(),0); ic.commitText(suggestion+" ",1); }
         else { ic.commitText((before.endsWith(" ")?"":" ")+suggestion+" ",1); }
-        predictor.observeWord(suggestion); predictor.save(prefs); handler.post(this::updateSuggestions);
+        predictor.observeWord(suggestion); predictor.save(prefs); scheduleSuggestions();
     }
     private void commitSpaceAndLearn(){
         InputConnection ic=getCurrentInputConnection(); if(ic==null) return;
         CharSequence cs=ic.getTextBeforeCursor(160,0); String before=cs==null?"":cs.toString();
-        predictor.learnFromContext(before); predictor.save(prefs); ic.commitText(" ",1); handler.post(this::updateSuggestions);
+        predictor.learnFromContext(before); predictor.save(prefs); ic.commitText(" ",1); scheduleSuggestions();
     }
 
     private void rebuild(){setInputView(buildKeyboard());}
-    private void commit(String s){InputConnection ic=getCurrentInputConnection();if(ic!=null){ic.commitText(s,1);handler.post(this::updateSuggestions);}}
+    private void commit(String s){InputConnection ic=getCurrentInputConnection();if(ic!=null){ic.commitText(s,1);scheduleSuggestions();}}
     private void backspace(){InputConnection ic=getCurrentInputConnection();if(ic!=null)ic.deleteSurroundingText(1,0);}
     private void sendKey(int code){InputConnection ic=getCurrentInputConnection();if(ic!=null){ic.sendKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN,code));ic.sendKeyEvent(new KeyEvent(KeyEvent.ACTION_UP,code));}}
     private void ctrlKey(int code){InputConnection ic=getCurrentInputConnection();if(ic!=null){ic.sendKeyEvent(new KeyEvent(0,0,KeyEvent.ACTION_DOWN,code,0,KeyEvent.META_CTRL_ON));ic.sendKeyEvent(new KeyEvent(0,0,KeyEvent.ACTION_UP,code,0,KeyEvent.META_CTRL_ON));}}

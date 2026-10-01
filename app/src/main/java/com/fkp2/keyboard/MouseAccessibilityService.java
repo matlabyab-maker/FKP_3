@@ -155,8 +155,11 @@ public class MouseAccessibilityService extends AccessibilityService {
         float cy = y + 2f;
         Path p = new Path();
         p.moveTo(cx, cy);
+        // A zero-length accessibility stroke is ignored on some Android builds.
+        // Give it a tiny movement so it is recognized as a real tap.
+        p.lineTo(cx + 1f, cy + 1f);
         GestureDescription.StrokeDescription stroke =
-            new GestureDescription.StrokeDescription(p, 0, 45);
+            new GestureDescription.StrokeDescription(p, 0, 80);
         dispatchGesture(new GestureDescription.Builder().addStroke(stroke).build(), null, null);
         // Android accessibility gesture dispatch is a screen tap; the right/left
         // distinction is not exposed by dispatchGesture. The right flag is retained
