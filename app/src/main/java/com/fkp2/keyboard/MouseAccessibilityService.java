@@ -320,7 +320,8 @@ public class MouseAccessibilityService extends AccessibilityService {
         if(!magnifierEnabled || Build.VERSION.SDK_INT<30) return;
         try {
             Executor ex = command -> handler.post(command);
-            takeScreenshot(Display.DEFAULT_DISPLAY, ex, result -> {
+            takeScreenshot(Display.DEFAULT_DISPLAY, ex, new AccessibilityService.TakeScreenshotCallback() {
+                @Override public void onSuccess(AccessibilityService.ScreenshotResult result) {
                 HardwareBuffer hb=null;
                 Bitmap source=null;
                 try {
@@ -346,6 +347,10 @@ public class MouseAccessibilityService extends AccessibilityService {
                 } catch(Exception ignored) {} finally {
                     if(source!=null)source.recycle();
                     if(hb!=null)hb.close();
+                }
+                }
+                @Override public void onFailure(int errorCode) {
+                    // Screenshot failed; magnifier simply keeps its previous image.
                 }
             });
         } catch(Exception ignored) {}

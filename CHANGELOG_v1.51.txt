@@ -1,0 +1,5 @@
+FKP_3 v1.51
+
+Build fix: corrected Android AccessibilityService takeScreenshot callback to implement both onSuccess and onFailure.
+The v1.50 build failed at MouseAccessibilityService.java:323 because TakeScreenshotCallback is not a functional interface.
+Auto-build remains enabled on push and manual workflow_dispatch remains available.
