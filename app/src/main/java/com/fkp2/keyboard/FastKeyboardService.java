@@ -359,7 +359,7 @@ public class FastKeyboardService extends InputMethodService {
             else b.setOnClickListener(this::showHistory);
         }
         ScrollView toolScroll=new ScrollView(this);toolScroll.setFillViewport(true);toolScroll.setVerticalScrollBarEnabled(true);toolScroll.setClipToPadding(true);toolScroll.addView(box,new ViewGroup.LayoutParams(-1,-2));
-        activePopup=new PopupWindow(toolScroll,dp(320),dp(430),true);stylePopup(activePopup);showPopupAbove(anchor,activePopup,dp(430));
+        activePopup=new PopupWindow(toolScroll,dp(320),dp(300),true);stylePopup(activePopup);showPopupAbove(anchor,activePopup,dp(300));
     }
     private ScrollView scrollBox(){ScrollView sv=new ScrollView(this);sv.setFillViewport(true);LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(6,6,6,6);box.setBackgroundColor(CREAM);sv.addView(box,new ViewGroup.LayoutParams(-1,-1));return sv;}
     private LinearLayout gridContainer(ScrollView sv){return (LinearLayout)sv.getChildAt(0);}

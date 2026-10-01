@@ -1,0 +1,8 @@
+FKP_3 v1.37
+
+Mouse click reliability update:
+- Enables retrieval of interactive accessibility windows.
+- Left click first tries ACTION_CLICK on the accessibility node under the cursor.
+- Falls back to AccessibilityService.dispatchGesture for arbitrary screen content.
+- Right click attempts ACTION_CONTEXT_CLICK where the target exposes it; Android does not provide a universal mouse-button injection API through AccessibilityService.
+- No keyboard layout changes.
