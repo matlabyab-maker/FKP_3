@@ -3,3 +3,7 @@ FKP_3 v1.44
 - Four visible corner handles resize the mouse window.
 - Mouse panel uses top-left window positioning for predictable resizing.
 - Existing close, move, auto-target, mouse and keyboard functions are retained.
+
+
+FKP_3 v1.49: ◆ removed from the long-press variants; ≤, ≥, ~ added.
+Build prepared via GitHub Actions; local APK build was not verified in this environment.

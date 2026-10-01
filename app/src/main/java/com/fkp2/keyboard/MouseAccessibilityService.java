@@ -4,6 +4,11 @@ import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.GestureDescription;
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.graphics.Color;
+import android.graphics.Bitmap;
+import android.graphics.ColorSpace;
+import android.hardware.HardwareBuffer;
+import android.view.Display;
+import android.widget.ImageView;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.GradientDrawable;
@@ -21,6 +26,7 @@ import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.view.MotionEvent;
 import android.graphics.Typeface;
+import java.util.concurrent.Executor;
 
 public class MouseAccessibilityService extends AccessibilityService {
     private static MouseAccessibilityService instance;
@@ -35,6 +41,12 @@ public class MouseAccessibilityService extends AccessibilityService {
     private WindowManager.LayoutParams mousePanelLp;
     private boolean autoTargetMode = false;
     private Button autoTargetButton;
+    private View magnifierView;
+    private WindowManager.LayoutParams magnifierLp;
+    private boolean magnifierEnabled=false;
+    private boolean selectMode=false;
+    private int cursorSizeStep=1;
+    private final int[] cursorSizeDp={30,42,58,76};
     private final Runnable autoTargetRunnable = new Runnable() {
         @Override public void run() {
             // Snap is checked directly after pointer movement; no periodic tree scan.
@@ -81,21 +93,19 @@ public class MouseAccessibilityService extends AccessibilityService {
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(8),dp(8),dp(8),dp(8));
+        root.setPadding(dp(4),dp(4),dp(4),dp(4));
         GradientDrawable panelBg = new GradientDrawable();
         panelBg.setColor(Color.argb(245, 250, 250, 250));
         panelBg.setStroke(dp(2), Color.rgb(45,45,55));
-        panelBg.setCornerRadius(dp(12));
+        panelBg.setCornerRadius(dp(6));
         root.setBackground(panelBg);
 
-        // Larger header so all controls remain comfortable to touch.
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
         GradientDrawable headerBg = new GradientDrawable();
         headerBg.setColor(Color.rgb(238,242,248));
         headerBg.setStroke(dp(1), Color.rgb(70,70,80));
-        headerBg.setCornerRadius(dp(8));
         header.setBackground(headerBg);
 
         TextView title = new TextView(this);
@@ -103,40 +113,41 @@ public class MouseAccessibilityService extends AccessibilityService {
         title.setTextSize(16);
         title.setTextColor(Color.rgb(10,38,92));
         title.setGravity(Gravity.CENTER);
-        header.addView(title, new LinearLayout.LayoutParams(0, dp(68), 1f));
+        header.addView(title, new LinearLayout.LayoutParams(0, dp(58), 1f));
 
         Button dragHandle = new Button(this);
-        dragHandle.setText("↕\nجابه‌جایی");
-        dragHandle.setTextSize(11);
+        dragHandle.setText("Drag");
+        dragHandle.setTextSize(16);
+        dragHandle.setAllCaps(false);
         dragHandle.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams handleLp = new LinearLayout.LayoutParams(dp(82), dp(60));
-        handleLp.rightMargin = dp(4);
+        header.addView(dragHandle, new LinearLayout.LayoutParams(dp(72), dp(58)));
 
         Button closeButton = new Button(this);
-        closeButton.setText("✕\nبستن");
-        closeButton.setTextSize(11);
+        closeButton.setText("Close");
+        closeButton.setTextSize(15);
+        closeButton.setAllCaps(false);
         closeButton.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams closeLp = new LinearLayout.LayoutParams(dp(82), dp(60));
-        closeLp.rightMargin = dp(2);
-        header.addView(dragHandle, handleLp);
-        header.addView(closeButton, closeLp);
-        root.addView(header, new LinearLayout.LayoutParams(-1, dp(72)));
+        header.addView(closeButton, new LinearLayout.LayoutParams(dp(72), dp(58)));
+        root.addView(header, new LinearLayout.LayoutParams(-1, dp(62)));
         closeButton.setOnClickListener(v -> hideMouseOverlay());
 
         final float[] panelLast = {0f,0f};
         final boolean[] panelMoving = {false};
+        final boolean[] panelDragged = {false};
         dragHandle.setOnTouchListener((v,e)->{
-            if (mousePanelLp == null || wm == null) return false;
+            if (mousePanelLp == null || wm == null) return true;
             if (e.getAction()==MotionEvent.ACTION_DOWN) {
                 panelLast[0]=e.getRawX();
                 panelLast[1]=e.getRawY();
                 panelMoving[0]=true;
+                panelDragged[0]=false;
                 return true;
             }
             if (e.getAction()==MotionEvent.ACTION_MOVE && panelMoving[0]) {
                 float dx=e.getRawX()-panelLast[0];
                 float dy=e.getRawY()-panelLast[1];
-                if (Math.abs(dx)>=1f || Math.abs(dy)>=1f) {
+                if (Math.abs(dx)>=2f || Math.abs(dy)>=2f) {
+                    panelDragged[0]=true;
                     mousePanelLp.x -= Math.round(dx);
                     mousePanelLp.y -= Math.round(dy);
                     int maxX=Math.max(0, screenW-mousePanel.getWidth()-dp(4));
@@ -151,19 +162,21 @@ public class MouseAccessibilityService extends AccessibilityService {
             }
             if (e.getAction()==MotionEvent.ACTION_UP || e.getAction()==MotionEvent.ACTION_CANCEL) {
                 panelMoving[0]=false;
+                // Consume the entire gesture. Never forward a drag gesture to the
+                // keyboard beneath the accessibility window.
                 return true;
             }
             return true;
         });
 
         final TextView pad = new TextView(this);
-        pad.setText("میدان لمسی موس\nحرکت نشانگر روی کل صفحه");
-        pad.setTextSize(13);
-        pad.setTextColor(Color.rgb(10,38,92));
+        pad.setText("میدان لمسی\nحرکت نشانگر");
+        pad.setTextSize(16);
+        pad.setTextColor(Color.rgb(190,194,202));
         pad.setGravity(Gravity.CENTER);
         GradientDrawable pg = new GradientDrawable();
-        pg.setColor(Color.rgb(232,236,242));
-        pg.setCornerRadius(10);
+        pg.setColor(Color.rgb(242,244,248));
+        pg.setStroke(dp(1), Color.rgb(190,194,202));
         pad.setBackground(pg);
         root.addView(pad, new LinearLayout.LayoutParams(-1, 125));
 
@@ -187,13 +200,44 @@ public class MouseAccessibilityService extends AccessibilityService {
 
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        Button left = new Button(this); left.setText("کلیک چپ");
-        Button right = new Button(this); right.setText("کلیک راست");
-        row.addView(left,new LinearLayout.LayoutParams(0,58,1));
-        row.addView(right,new LinearLayout.LayoutParams(0,58,1));
+        Button left = new Button(this); left.setText("کلیک چپ"); left.setTextSize(15);
+        Button pointerSize = new Button(this); pointerSize.setText("↕"); pointerSize.setTextSize(25);
+        Button auto = new Button(this); auto.setText("حرکت\nخودکار"); auto.setTextSize(11);
+        Button magnify = new Button(this); magnify.setText("↕"); magnify.setTextSize(25);
+        Button right = new Button(this); right.setText("کلیک راست"); right.setTextSize(15);
+        Button select = new Button(this); select.setText("Select"); select.setTextSize(14); select.setAllCaps(false);
+        row.addView(left,new LinearLayout.LayoutParams(0,58,2.1f));
+        row.addView(pointerSize,new LinearLayout.LayoutParams(0,58,.58f));
+        row.addView(auto,new LinearLayout.LayoutParams(0,58,1.0f));
+        row.addView(magnify,new LinearLayout.LayoutParams(0,58,.58f));
+        row.addView(right,new LinearLayout.LayoutParams(0,58,2.1f));
+        row.addView(select,new LinearLayout.LayoutParams(0,58,1.25f));
         root.addView(row);
 
-        // Adjustable transparency for the whole mouse window.
+        pointerSize.setOnClickListener(v -> cycleCursorSize());
+        magnify.setOnClickListener(v -> toggleMagnifier());
+        auto.setOnClickListener(v -> toggleAutoTargetMode());
+        select.setOnClickListener(v -> {
+            selectMode=!selectMode;
+            select.setText(selectMode ? "Select ✓" : "Select");
+            if (!selectMode) dragMode=false;
+        });
+
+        // Hold left while moving the touch field to perform drag/select.
+        left.setOnTouchListener((v,e)->{
+            if (e.getAction()==MotionEvent.ACTION_DOWN) {
+                beginDragFromKeyboard();
+                return true;
+            }
+            if (e.getAction()==MotionEvent.ACTION_UP || e.getAction()==MotionEvent.ACTION_CANCEL) {
+                endDragFromKeyboard();
+                if (e.getAction()==MotionEvent.ACTION_UP && !selectMode) click(false);
+                return true;
+            }
+            return true;
+        });
+        right.setOnClickListener(v->click(true));
+
         LinearLayout transparencyRow = new LinearLayout(this);
         transparencyRow.setOrientation(LinearLayout.HORIZONTAL);
         transparencyRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -227,33 +271,8 @@ public class MouseAccessibilityService extends AccessibilityService {
             @Override public void onStopTrackingTouch(SeekBar bar) {}
         });
 
-        // Hold the left button while moving the mouse field to drag/select.
-        // A normal press and release remains a regular left click.
-        left.setOnTouchListener((v,e)->{
-            if (e.getAction()==MotionEvent.ACTION_DOWN) {
-                beginDragFromKeyboard();
-                v.setPressed(true);
-                return true;
-            }
-            if (e.getAction()==MotionEvent.ACTION_UP || e.getAction()==MotionEvent.ACTION_CANCEL) {
-                endDragFromKeyboard();
-                v.setPressed(false);
-                if (e.getAction()==MotionEvent.ACTION_UP) click(false);
-                return true;
-            }
-            return true;
-        });
-        right.setOnClickListener(v->click(true));
+        autoTargetButton = auto;
 
-        autoTargetButton = new Button(this);
-        autoTargetButton.setText("حرکت خودکار: خاموش");
-        autoTargetButton.setTextSize(13);
-        LinearLayout.LayoutParams autoLp = new LinearLayout.LayoutParams(-1, 54);
-        autoLp.topMargin = 4;
-        root.addView(autoTargetButton, autoLp);
-        autoTargetButton.setOnClickListener(v -> toggleAutoTargetMode());
-
-        // Wrap the existing content so four corner handles can be overlaid.
         FrameLayout panel = new FrameLayout(this);
         panel.setClipChildren(false);
         panel.setClipToPadding(false);
@@ -264,7 +283,7 @@ public class MouseAccessibilityService extends AccessibilityService {
         addResizeHandle(panel, Gravity.RIGHT | Gravity.BOTTOM, 1, 1);
 
         mousePanel = panel;
-        int initialW = Math.min(dp(400), screenW - dp(16));
+        int initialW = Math.min(dp(430), screenW - dp(16));
         int initialH = dp(390);
         mousePanelLp = new WindowManager.LayoutParams(
             initialW, initialH,
@@ -276,6 +295,85 @@ public class MouseAccessibilityService extends AccessibilityService {
         mousePanelLp.y = dp(72);
         panel.setElevation(30f);
         wm.addView(panel, mousePanelLp);
+    }
+
+    private void cycleCursorSize() {
+        cursorSizeStep=(cursorSizeStep+1)%cursorSizeDp.length;
+        int newSize=dp(cursorSizeDp[cursorSizeStep]);
+        cursorSize=newSize;
+        if(cursor==null || wm==null) return;
+        WindowManager.LayoutParams lp=(WindowManager.LayoutParams)cursor.getTag();
+        float centerX=x+((int)lp.width)/2f, centerY=y+((int)lp.height)/2f;
+        lp.width=newSize; lp.height=newSize;
+        x=Math.max(0,Math.min(screenW-newSize,centerX-newSize/2f));
+        y=Math.max(0,Math.min(screenH-newSize,centerY-newSize/2f));
+        lp.x=Math.round(x); lp.y=Math.round(y);
+        try{wm.updateViewLayout(cursor,lp);}catch(Exception ignored){}
+    }
+
+    private void toggleMagnifier() {
+        magnifierEnabled=!magnifierEnabled;
+        if(magnifierEnabled) updateMagnifier(); else hideMagnifier();
+    }
+
+    private void updateMagnifier() {
+        if(!magnifierEnabled || Build.VERSION.SDK_INT<30) return;
+        try {
+            Executor ex = command -> handler.post(command);
+            takeScreenshot(Display.DEFAULT_DISPLAY, ex, result -> {
+                HardwareBuffer hb=null;
+                Bitmap source=null;
+                try {
+                    hb=result.getHardwareBuffer();
+                    ColorSpace cs=result.getColorSpace();
+                    if(hb!=null){
+                        Bitmap hw=Bitmap.wrapHardwareBuffer(hb,cs);
+                        if(hw!=null){source=hw.copy(Bitmap.Config.ARGB_8888,false);hw.recycle();}
+                    }
+                    if(source==null)return;
+                    int radius=Math.max(30,Math.round(cursorSize*1.2f));
+                    int cx=Math.max(0,Math.min(source.getWidth()-1,Math.round(x+cursorSize/2f)));
+                    int cy=Math.max(0,Math.min(source.getHeight()-1,Math.round(y+cursorSize/2f)));
+                    int left=Math.max(0,Math.min(source.getWidth()-1,cx-radius));
+                    int top=Math.max(0,Math.min(source.getHeight()-1,cy-radius));
+                    int right=Math.min(source.getWidth(),left+radius*2);
+                    int bottom=Math.min(source.getHeight(),top+radius*2);
+                    Bitmap crop=Bitmap.createBitmap(source,left,top,Math.max(1,right-left),Math.max(1,bottom-top));
+                    Bitmap scaled=Bitmap.createScaledBitmap(crop,dp(180),dp(180),true);
+                    crop.recycle();
+                    Bitmap finalBitmap=scaled;
+                    handler.post(()->showMagnifierBitmap(finalBitmap));
+                } catch(Exception ignored) {} finally {
+                    if(source!=null)source.recycle();
+                    if(hb!=null)hb.close();
+                }
+            });
+        } catch(Exception ignored) {}
+    }
+
+    private void showMagnifierBitmap(Bitmap bitmap) {
+        if(!magnifierEnabled || wm==null || bitmap==null)return;
+        if(magnifierView==null){
+            ImageView iv=new ImageView(this);
+            GradientDrawable bg=new GradientDrawable();
+            bg.setColor(Color.WHITE); bg.setStroke(dp(2),Color.rgb(45,45,55)); bg.setCornerRadius(dp(8));
+            iv.setBackground(bg); iv.setPadding(dp(2),dp(2),dp(2),dp(2));
+            magnifierView=iv;
+            magnifierLp=new WindowManager.LayoutParams(dp(190),dp(190),WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE|WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT);
+            magnifierLp.gravity=Gravity.TOP|Gravity.LEFT;
+            try{wm.addView(magnifierView,magnifierLp);}catch(Exception ignored){magnifierView=null;return;}
+        }
+        ((ImageView)magnifierView).setImageBitmap(bitmap);
+        magnifierLp.x=Math.max(0,Math.min(screenW-magnifierLp.width,Math.round(x+cursorSize+dp(8))));
+        magnifierLp.y=Math.max(0,Math.min(screenH-magnifierLp.height,Math.round(y-dp(8)-magnifierLp.height)));
+        try{wm.updateViewLayout(magnifierView,magnifierLp);}catch(Exception ignored){}
+    }
+
+    private void hideMagnifier(){
+        if(magnifierView!=null&&wm!=null){try{wm.removeView(magnifierView);}catch(Exception ignored){}}
+        magnifierView=null;magnifierLp=null;
     }
 
     private void addResizeHandle(FrameLayout panel, int gravity, int horizontalDir, int verticalDir) {
@@ -363,14 +461,14 @@ public class MouseAccessibilityService extends AccessibilityService {
         }
         if (targets.isEmpty()) return;
 
-        // Requested snap radius: 30 mm from the clickable bounds.
+        // Increased auto-target sensitivity: 60 mm from the clickable bounds.
         // Use the physical display density so the distance is approximately
         // the same physical size across different screens.
         android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
         float pxPerMmX = Math.max(1f, dm.xdpi / 25.4f);
         float pxPerMmY = Math.max(1f, dm.ydpi / 25.4f);
-        float thresholdX = pxPerMmX * 30f;
-        float thresholdY = pxPerMmY * 30f;
+        float thresholdX = pxPerMmX * 60f;
+        float thresholdY = pxPerMmY * 60f;
         float hx = x + 2f;
         float hy = y + 2f;
         android.view.accessibility.AccessibilityNodeInfo best = null;
@@ -478,6 +576,8 @@ public class MouseAccessibilityService extends AccessibilityService {
 
     public void hideMouseOverlay() {
         stopAutoTargetMode();
+        magnifierEnabled=false;
+        hideMagnifier();
         if (mousePanel != null && wm != null) { try { wm.removeView(mousePanel); } catch(Exception ignored) {} }
         mousePanel = null; mousePanelLp = null;
         hideCursor();
@@ -562,6 +662,7 @@ public class MouseAccessibilityService extends AccessibilityService {
         lp.y = Math.round(y);
         wm.updateViewLayout(cursor, lp);
         if (autoTargetMode) snapToNearbyClickable();
+        if (magnifierEnabled) updateMagnifier();
         if(dragMode && Build.VERSION.SDK_INT>=24){
             dispatchSwipe(oldX+3f,oldY+3f,x+3f,y+3f,35);
         }
@@ -647,6 +748,7 @@ public class MouseAccessibilityService extends AccessibilityService {
 
     @Override public void onDestroy() {
         stopAutoTargetMode();
+        hideMagnifier();
         instance = null;
         if (cursor != null && wm != null) {
             try { wm.removeView(cursor); } catch (Exception ignored) {}

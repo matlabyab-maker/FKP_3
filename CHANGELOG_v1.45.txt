@@ -10,3 +10,7 @@ Changes:
 - No keyboard layout changes were made.
 
 Note: Android Build was not executed in this environment; ZIP integrity was verified.
+
+
+FKP_3 v1.49: ◆ removed from the long-press variants; ≤, ≥, ~ added.
+Build prepared via GitHub Actions; local APK build was not verified in this environment.

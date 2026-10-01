@@ -1,0 +1,10 @@
+FKP_3 v1.49
+
+- دکمه کشویی قبلی ± اکنون روی صفحه اصلی با علامت ◆ نمایش داده می‌شود.
+- لمس کوتاه این دکمه مستقیماً ◆ را تایپ می‌کند.
+- فهرست زیرگونه‌های کشویی بدون تغییر باقی مانده است.
+- سایر چیدمان و قابلیت‌های پروژه تغییر داده نشده‌اند.
+
+
+FKP_3 v1.49: ◆ removed from the long-press variants; ≤, ≥, ~ added.
+Build prepared via GitHub Actions; local APK build was not verified in this environment.

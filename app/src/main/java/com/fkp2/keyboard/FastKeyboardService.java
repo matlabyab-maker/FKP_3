@@ -83,6 +83,9 @@ public class FastKeyboardService extends InputMethodService {
     private static final String[] EN_MARKS_R3={"<",">","{","}","[","]","\\","|","?","/"};
 
     private static final String[] ALIF_VARIANTS={"ا","آ","أ","إ","ٱ","ؤ","ئ"};
+    // Long-press variants for the ± key. Exact requested symbols are included,
+    // together with closely related typographic forms where useful.
+    private static final String[] PM_VARIANTS={"«","»","_","-","!",":","+",";","\"","=","×","[","]","؛","≤","≥","~"};
     private static final String[] ARABIC_MARKS={"َ","ِ","ُ","ً","ٍ","ٌ","ْ","ّ","ٰ","ٔ","ٕ","ٖ","ٗ","٘","ٙ","ٚ","ٛ","ٜ","ٝ","ٞ","ٟ","ـ","ء","آ","أ","ؤ","إ","ئ","ة","ى","لا"};
 
     private static final String[] EMOJIS={"😀","😃","😄","😁","😆","😅","😂","🤣","😊","😇","🙂","🙃","😉","😌","😍","🥰","😘","😗","😙","😚","😋","😛","😝","😜","🤪","🤨","🧐","🤓","😎","🤩","🥳","😏","😒","😞","😔","😟","😕","🙁","☹️","😣","😖","😫","😩","🥺","😢","😭","😤","😠","😡","🤬","🤯","😳","🥵","🥶","😱","😨","😰","😥","😓","🤗","🤔","🤭","🤫","🤥","😶","😐","😑","😬","🙄","😯","😦","😧","😮","😲","🥱","😴","🤤","😪","😵","🤐","🥴","🤢","🤮","🤧","😷","🤒","🤕","🤑","🤠","😈","👿","👹","👺","🤡","💩","👻","💀","☠️","👽","👾","🤖","🎃","😺","😸","😹","😻","😼","😽","🙀","😿","😾","🙈","🙉","🙊","💋","💘","💝","💖","💗","💓","💞","💕","💟","❣️","💔","❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💯","💥","💫","💦","💨","💣","💬","👋","🤚","🖐️","✋","🖖","👌","🤏","✌️","🤞","🤟","🤘","🤙","👈","👉","👆","👇","☝️","👍","👎","✊","👊","🤝","🙏","👏","🙌","💪","👀","🧠","👄","👅","👂","👃","👶","🧒","👦","👧","🧑","👨","👩","🧓","👴","👵","🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🐔","🐧","🐦","🐤","🦄","🐝","🦋","🐌","🐞","🐜","🐢","🐍","🦎","🦂","🐙","🦀","🐠","🐟","🐬","🐳","🐊","🐘","🦏","🦒","🦓","🐎","🐕","🐈","🐓","🦜","🦢","🌹","🌷","🌻","🌞","🌈","☀️","⭐","🌟","✨","⚡","❄️","🔥","🌊","🍎","🍊","🍋","🍉","🍇","🍓","🍒","🍑","🍍","🥝","🍅","🥑","🍞","🧀","🍔","🍕","🍟","🌭","🍿","🍩","🍪","🎂","🍰","🍫","🍬","☕","🍵","⚽","🏀","🏈","⚾","🎾","🏐","🏆","🥇","🚗","🚕","🚌","🚓","🚑","🚒","✈️","🚁","🚀","🚲","🏠","🏢","🏥","🏫","⛪","🕌","🛒","📱","💻","⌚","📷","📺","🎧","🎵","🎶","🎸","🎹","🎮","🎲","🎯","🎁","🎈","🎉","🎊","📌","📍","🔑","🔒","🔓","⚙️","🔔","🔍","🔎","💡","📁","📂","🗂️","🗃️","🗄️","📦","🗑️","📝","📄","📋","📎","📚","📖"};
@@ -111,7 +114,7 @@ public class FastKeyboardService extends InputMethodService {
         addLetterRow(letterRows,english?EN_R1:PERSIAN_R1,english?EN_MARKS_R1:PERSIAN_MARKS_R1);addLetterRow(letterRows,english?EN_R2:PERSIAN_R2,english?EN_MARKS_R2:PERSIAN_MARKS_R2);
         letters.addView(letterRows);Button enter=key("Enter",16,NAVY,Color.rgb(214,232,255));letters.addView(enter,new LinearLayout.LayoutParams(0,-1,1.2f));enter.setOnClickListener(v->sendKey(KeyEvent.KEYCODE_ENTER));root.addView(letters);
         LinearLayout third=row(1f);Button capsB=key(capsLocked?"Caps 🔒":"Caps",16,NAVY,caps?YELLOW:CREAM);third.addView(capsB,weight(1.2f));capsB.setOnClickListener(v->{long now=android.os.SystemClock.uptimeMillis();if(now-lastCapsTap<450){capsLocked=!capsLocked;caps=capsLocked;lastCapsTap=0;}else{caps=!caps;lastCapsTap=now;}rebuild();});String[] r3=english?EN_R3:PERSIAN_R3;for(int i=0;i<r3.length;i++){String s=caps?r3[i].toUpperCase():r3[i];Button b=key(s,20,NAVY,CREAM);third.addView(b,weight(1));final String out=s;b.setOnClickListener(v->{commit(out);if(!capsLocked&&caps){caps=false;rebuild();}});}Button qmark=key("؟",20,RED,CREAM);third.addView(qmark,weight(1));qmark.setOnClickListener(v->commit("؟"));root.addView(third);
-        LinearLayout bottom=row(1.08f);Button emoji=keyWithIcon("اموجی","☺",14,NAVY,CREAM);Button sym=keyWithIcon("123\n!@...","⌘",13,NAVY,symbols?YELLOW:CREAM);Button globe=key(english?"🌐 EN":"🌐 FA",18,BLUE,CREAM);Button space=key("Space",19,NAVY,CREAM);Button comma=key(english?",":"،",23,RED,CREAM);Button question=key(".",23,RED,CREAM);Button pm=key("+\n−",18,RED,CREAM);Button left=key("←",23,BLUE,CREAM);Button right=key("→",23,BLUE,CREAM);Button up=key("↑",23,BLUE,CREAM);Button down=key("↓",23,BLUE,CREAM);bottom.addView(emoji,weight(.82f));bottom.addView(sym,weight(1.15f));bottom.addView(globe,weight(.9f));bottom.addView(space,weight(2.35f));bottom.addView(comma,weight(.72f));bottom.addView(question,weight(.72f));bottom.addView(pm,weight(.72f));bottom.addView(left,weight(.95f));bottom.addView(right,weight(.95f));bottom.addView(up,weight(.82f));bottom.addView(down,weight(.82f));emoji.setOnClickListener(v->showEmoji(v));sym.setOnClickListener(v->showSymbols(v));globe.setOnClickListener(v->{english=!english;symbols=false;rebuild();});space.setOnClickListener(v->commitSpaceAndLearn());comma.setOnClickListener(v->commit(((Button)v).getText().toString()));question.setOnClickListener(v->commit("."));pm.setOnClickListener(v->commit("±"));addArrowRepeat(left,KeyEvent.KEYCODE_DPAD_LEFT);addArrowRepeat(right,KeyEvent.KEYCODE_DPAD_RIGHT);addArrowRepeat(up,KeyEvent.KEYCODE_DPAD_UP);addArrowRepeat(down,KeyEvent.KEYCODE_DPAD_DOWN);root.addView(bottom);return root;
+        LinearLayout bottom=row(1.08f);Button emoji=keyWithIcon("اموجی","☺",14,NAVY,CREAM);Button sym=keyWithIcon("123\n!@...","⌘",13,NAVY,symbols?YELLOW:CREAM);Button globe=key(english?"🌐 EN":"🌐 FA",18,BLUE,CREAM);Button space=key("Space",19,NAVY,CREAM);Button comma=key(english?",":"،",23,RED,CREAM);Button question=key(".",23,RED,CREAM);Button pm=key("◆",18,RED,CREAM);Button left=key("←",23,BLUE,CREAM);Button right=key("→",23,BLUE,CREAM);Button up=key("↑",23,BLUE,CREAM);Button down=key("↓",23,BLUE,CREAM);bottom.addView(emoji,weight(.82f));bottom.addView(sym,weight(1.15f));bottom.addView(globe,weight(.9f));bottom.addView(space,weight(2.35f));bottom.addView(comma,weight(.72f));bottom.addView(question,weight(.72f));bottom.addView(pm,weight(.72f));bottom.addView(left,weight(.95f));bottom.addView(right,weight(.95f));bottom.addView(up,weight(.82f));bottom.addView(down,weight(.82f));emoji.setOnClickListener(v->showEmoji(v));sym.setOnClickListener(v->showSymbols(v));globe.setOnClickListener(v->{english=!english;symbols=false;rebuild();});space.setOnClickListener(v->commitSpaceAndLearn());comma.setOnClickListener(v->commit(((Button)v).getText().toString()));question.setOnClickListener(v->commit("."));pm.setOnClickListener(v->commit("◆"));addSymbolVariantsLongPress(pm,PM_VARIANTS);addArrowRepeat(left,KeyEvent.KEYCODE_DPAD_LEFT);addArrowRepeat(right,KeyEvent.KEYCODE_DPAD_RIGHT);addArrowRepeat(up,KeyEvent.KEYCODE_DPAD_UP);addArrowRepeat(down,KeyEvent.KEYCODE_DPAD_DOWN);root.addView(bottom);return root;
     }
 
     private void addLetterRow(LinearLayout parent,String[] letters,String[] marks){LinearLayout r=row(1f);for(int i=0;i<letters.length;i++){String s=caps?letters[i].toUpperCase():letters[i];Button b=key(s,22,NAVY,CREAM);r.addView(b,weight(1));final String out=s;b.setOnClickListener(v->{commit(out);if(!capsLocked&&caps){caps=false;rebuild();}});if(!english&&s.equals("ا")){addAlifLongPress(b);}else{}}parent.addView(r);}
@@ -152,6 +155,39 @@ public class FastKeyboardService extends InputMethodService {
         });
     }
     private void showSymbols(View anchor){symbols=true;showRepeatGridPopup(anchor,SYMBOLS,42,300);}
+
+    private void addSymbolVariantsLongPress(Button b,String[] items){
+        final boolean[] shown={false};
+        final Runnable[] r={null};
+        r[0]=()->{shown[0]=true;showSymbolVariants(b,items);};
+        b.setOnTouchListener((v,e)->{
+            if(e.getAction()==MotionEvent.ACTION_DOWN){
+                shown[0]=false;
+                handler.postDelayed(r[0],450);
+                b.setBackground(makeBg(YELLOW));
+                return true;
+            }
+            if(e.getAction()==MotionEvent.ACTION_UP||e.getAction()==MotionEvent.ACTION_CANCEL){
+                handler.removeCallbacks(r[0]);
+                Object t=b.getTag();
+                b.setBackground(makeBg(t instanceof Integer?(Integer)t:CREAM));
+                if(!shown[0] && e.getAction()==MotionEvent.ACTION_UP) b.performClick();
+                return true;
+            }
+            return true;
+        });
+    }
+    private void showSymbolVariants(View anchor,String[] items){
+        int[] loc=popupLocation(anchor);
+        dismissPopup();
+        ScrollView sv=scrollBox();
+        LinearLayout box=gridContainer(sv);
+        addAlifGrid(box,items,52);
+        int h=Math.min(210,Math.max(120,((items.length+6)/7)*52+10));
+        activePopup=new PopupWindow(sv,dp(360),dp(h),true);
+        stylePopup(activePopup);
+        showPopupAt(activePopup,loc[0],loc[1],h);
+    }
 
     private void addAlifLongPress(Button b){final boolean[] shown={false};final Runnable[] r={null};r[0]=()->{shown[0]=true;showAlifVariants(b);};b.setOnTouchListener((v,e)->{if(e.getAction()==MotionEvent.ACTION_DOWN){shown[0]=false;handler.postDelayed(r[0],450);b.setBackground(makeBg(YELLOW));return true;}if(e.getAction()==MotionEvent.ACTION_UP||e.getAction()==MotionEvent.ACTION_CANCEL){handler.removeCallbacks(r[0]);Object t=b.getTag();b.setBackground(makeBg(t instanceof Integer?(Integer)t:CREAM));if(!shown[0]){b.performClick();}return true;}return true;});}
     private void showAlifVariants(View anchor){

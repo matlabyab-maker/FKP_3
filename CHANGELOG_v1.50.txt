@@ -1,0 +1,8 @@
+FKP_3 v1.50
+
+Mouse auto-target sensitivity increased.
+- Auto-target/snap radius increased from 30 mm to 60 mm around clickable controls.
+- Existing auto-target behavior, cursor movement, click behavior, window controls, magnifier, resize and transparency remain unchanged.
+- Build workflow remains manual: no build on push; run the workflow manually when desired.
+
+Build status: APK was not locally built in this environment because the Android/Gradle build toolchain is unavailable here. The project is prepared for the repository build workflow.
