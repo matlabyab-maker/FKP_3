@@ -29,10 +29,17 @@ public class MouseAccessibilityService extends AccessibilityService {
     private int screenW, screenH;
     private int cursorSize;
     private boolean dragMode=false;
-    private boolean autoTarget=false;
-    private final Runnable autoTargetRunnable = new Runnable(){ public void run(){ if(autoTarget){ snapToNearbyClickable(); handler.postDelayed(this,140); } } };
     private View mousePanel;
     private WindowManager.LayoutParams mousePanelLp;
+    private boolean autoTargetMode = false;
+    private Button autoTargetButton;
+    private final Runnable autoTargetRunnable = new Runnable() {
+        @Override public void run() {
+            if (!autoTargetMode || mousePanel == null || cursor == null) return;
+            moveToNextClickableTarget();
+            handler.postDelayed(this, 900);
+        }
+    };
 
     public static MouseAccessibilityService getInstance() { return instance; }
 
@@ -156,25 +163,17 @@ public class MouseAccessibilityService extends AccessibilityService {
         left.setOnClickListener(v->click(false));
         right.setOnClickListener(v->click(true));
 
-        Button auto = new Button(this);
-        auto.setText("حرکت خودکار به موارد قابل کلیک: خاموش");
-        root.addView(auto,new LinearLayout.LayoutParams(-1,58));
-        auto.setOnClickListener(v->{
-            autoTarget = !autoTarget;
-            auto.setText(autoTarget
-                ? "حرکت خودکار به موارد قابل کلیک: روشن"
-                : "حرکت خودکار به موارد قابل کلیک: خاموش");
-            if(autoTarget){
-                handler.removeCallbacks(autoTargetRunnable);
-                handler.post(autoTargetRunnable);
-            }else{
-                handler.removeCallbacks(autoTargetRunnable);
-            }
-        });
+        autoTargetButton = new Button(this);
+        autoTargetButton.setText("حرکت خودکار: خاموش");
+        autoTargetButton.setTextSize(13);
+        LinearLayout.LayoutParams autoLp = new LinearLayout.LayoutParams(-1, 54);
+        autoLp.topMargin = 4;
+        root.addView(autoTargetButton, autoLp);
+        autoTargetButton.setOnClickListener(v -> toggleAutoTargetMode());
 
         mousePanel = root;
         mousePanelLp = new WindowManager.LayoutParams(
-            Math.min(dp(330), screenW - dp(16)), dp(245),
+            Math.min(dp(330), screenW - dp(16)), dp(305),
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT);
@@ -184,9 +183,95 @@ public class MouseAccessibilityService extends AccessibilityService {
         wm.addView(root, mousePanelLp);
     }
 
-    public void hideMouseOverlay() {
-        autoTarget = false;
+    private void toggleAutoTargetMode() {
+        autoTargetMode = !autoTargetMode;
+        if (autoTargetButton != null) {
+            autoTargetButton.setText(autoTargetMode ? "حرکت خودکار: روشن" : "حرکت خودکار: خاموش");
+        }
         handler.removeCallbacks(autoTargetRunnable);
+        if (autoTargetMode) {
+            moveToNextClickableTarget();
+            handler.postDelayed(autoTargetRunnable, 900);
+        }
+    }
+
+    private void stopAutoTargetMode() {
+        autoTargetMode = false;
+        handler.removeCallbacks(autoTargetRunnable);
+        if (autoTargetButton != null) autoTargetButton.setText("حرکت خودکار: خاموش");
+    }
+
+    private void moveToNextClickableTarget() {
+        if (cursor == null || wm == null) return;
+        android.view.accessibility.AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return;
+        java.util.ArrayList<android.view.accessibility.AccessibilityNodeInfo> targets = new java.util.ArrayList<>();
+        try {
+            collectClickableTargets(root, targets);
+        } finally {
+            root.recycle();
+        }
+        if (targets.isEmpty()) return;
+
+        // Choose the next target in screen order. Keep an index in a field so
+        // repeated timer ticks walk through links/buttons instead of staying put.
+        int start = autoTargetIndex % targets.size();
+        android.view.accessibility.AccessibilityNodeInfo target = targets.get(start);
+        autoTargetIndex = (start + 1) % targets.size();
+
+        android.graphics.Rect r = new android.graphics.Rect();
+        target.getBoundsInScreen(r);
+        target.recycle();
+
+        if (r.width() <= 0 || r.height() <= 0) return;
+        float tx = r.left + Math.min(r.width() / 2f, 20f);
+        float ty = r.top + Math.min(r.height() / 2f, 20f);
+        moveCursorToScreenPoint(tx, ty);
+    }
+
+    private int autoTargetIndex = 0;
+
+    private void collectClickableTargets(android.view.accessibility.AccessibilityNodeInfo node,
+                                         java.util.ArrayList<android.view.accessibility.AccessibilityNodeInfo> out) {
+        if (node == null) return;
+        android.graphics.Rect r = new android.graphics.Rect();
+        node.getBoundsInScreen(r);
+        boolean usable = node.isVisibleToUser() && r.width() > 4 && r.height() > 4;
+        boolean clickable = node.isClickable();
+        if (!clickable && Build.VERSION.SDK_INT >= 21) {
+            java.util.List<android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction> actions = node.getActionList();
+            for (android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction a : actions) {
+                if (a.getId() == android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK) {
+                    clickable = true;
+                    break;
+                }
+            }
+        }
+        if (usable && clickable) out.add(android.view.accessibility.AccessibilityNodeInfo.obtain(node));
+
+        for (int i = 0; i < node.getChildCount(); i++) {
+            android.view.accessibility.AccessibilityNodeInfo child = node.getChild(i);
+            if (child != null) {
+                collectClickableTargets(child, out);
+                child.recycle();
+            }
+        }
+    }
+
+    private void moveCursorToScreenPoint(float tx, float ty) {
+        if (cursor == null || wm == null) return;
+        float maxX = Math.max(0, screenW - cursorSize);
+        float maxY = Math.max(0, screenH - cursorSize);
+        x = Math.max(0, Math.min(maxX, tx));
+        y = Math.max(0, Math.min(maxY, ty));
+        WindowManager.LayoutParams lp = (WindowManager.LayoutParams) cursor.getTag();
+        lp.x = Math.round(x);
+        lp.y = Math.round(y);
+        try { wm.updateViewLayout(cursor, lp); } catch (Exception ignored) {}
+    }
+
+    public void hideMouseOverlay() {
+        stopAutoTargetMode();
         if (mousePanel != null && wm != null) { try { wm.removeView(mousePanel); } catch(Exception ignored) {} }
         mousePanel = null; mousePanelLp = null;
         hideCursor();
@@ -315,19 +400,19 @@ public class MouseAccessibilityService extends AccessibilityService {
 
     private boolean performNodeClickAt(int px, int py, boolean right) {
         if (Build.VERSION.SDK_INT < 21) return false;
-        AccessibilityNodeInfo root = getRootInActiveWindow();
+        android.view.accessibility.AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return false;
-        AccessibilityNodeInfo node = findNodeAt(root, px, py);
+        android.view.accessibility.AccessibilityNodeInfo node = findNodeAt(root, px, py);
         if (node == null) return false;
         try {
             if (right && Build.VERSION.SDK_INT >= 24 &&
                 node.getActionList().toString().contains("ACTION_CONTEXT_CLICK")) {
-                if (node.performAction(AccessibilityNodeInfo.ACTION_CONTEXT_CLICK)) return true;
+                if (node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CONTEXT_CLICK)) return true;
             }
-            if (node.isClickable() && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true;
+            if (node.isClickable() && node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)) return true;
             // Some browser controls expose ACTION_CLICK without reporting clickable.
             if (node.getActionList().toString().contains("ACTION_CLICK")) {
-                return node.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                return node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK);
             }
         } finally {
             node.recycle();
@@ -335,126 +420,26 @@ public class MouseAccessibilityService extends AccessibilityService {
         return false;
     }
 
-    private AccessibilityNodeInfo findNodeAt(AccessibilityNodeInfo node, int px, int py) {
+    private android.view.accessibility.AccessibilityNodeInfo findNodeAt(android.view.accessibility.AccessibilityNodeInfo node, int px, int py) {
         android.graphics.Rect r = new android.graphics.Rect();
         node.getBoundsInScreen(r);
         if (!r.contains(px, py)) return null;
         // Search children first so the most specific control at the cursor wins.
         for (int i = node.getChildCount() - 1; i >= 0; i--) {
-            AccessibilityNodeInfo child = node.getChild(i);
+            android.view.accessibility.AccessibilityNodeInfo child = node.getChild(i);
             if (child == null) continue;
-            AccessibilityNodeInfo hit = findNodeAt(child, px, py);
+            android.view.accessibility.AccessibilityNodeInfo hit = findNodeAt(child, px, py);
             if (hit != null) return hit;
             child.recycle();
         }
-        return AccessibilityNodeInfo.obtain(node);
-    }
-
-
-    /**
-     * When auto-target is enabled, gently moves the cursor to the nearest
-     * clickable/accessibility action only when it is already close to that
-     * control. It does not click anything automatically.
-     */
-    private void snapToNearbyClickable() {
-        if (cursor == null || !autoTarget) return;
-        AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root == null) return;
-        try {
-            AccessibilityNodeInfo best = findNearestClickable(root, x + 3f, y + 3f, 150f);
-            if (best == null) return;
-            android.graphics.Rect r = new android.graphics.Rect();
-            best.getBoundsInScreen(r);
-            float tx = Math.max(r.left + 3f, Math.min(x + 3f, r.right - 3f));
-            float ty = Math.max(r.top + 3f, Math.min(y + 3f, r.bottom - 3f));
-            float targetX = r.centerX() - 3f;
-            float targetY = r.centerY() - 3f;
-            // Prefer the nearest point inside the control, so the cursor does not
-            // jump to the far side of a large button.
-            if (x + 3f < r.left) targetX = r.left + 3f;
-            else if (x + 3f > r.right) targetX = r.right - 3f;
-            else targetX = x;
-            if (y + 3f < r.top) targetY = r.top + 3f;
-            else if (y + 3f > r.bottom) targetY = r.bottom - 3f;
-            else targetY = y;
-            moveCursorTo(targetX - 3f, targetY - 3f);
-            best.recycle();
-        } finally {
-            // getRootInActiveWindow() is owned by the accessibility framework.
-        }
-    }
-
-
-    private AccessibilityNodeInfo findNearestClickable(AccessibilityNodeInfo node,
-                                                        float px, float py,
-                                                        float maxDistance) {
-        android.graphics.Rect r = new android.graphics.Rect();
-        node.getBoundsInScreen(r);
-        AccessibilityNodeInfo best = null;
-        float bestDist = maxDistance + 0.1f;
-
-        boolean actionable = node.isClickable();
-        if (Build.VERSION.SDK_INT >= 21) {
-            for (AccessibilityNodeInfo.AccessibilityAction a : node.getActionList()) {
-                if (a.getId() == AccessibilityNodeInfo.ACTION_CLICK ||
-                    (Build.VERSION.SDK_INT >= 24 &&
-                     a.getId() == AccessibilityNodeInfo.ACTION_CONTEXT_CLICK)) {
-                    actionable = true;
-                    break;
-                }
-            }
-        }
-        if (actionable && !r.isEmpty()) {
-            float nx = Math.max(r.left, Math.min(px, r.right));
-            float ny = Math.max(r.top, Math.min(py, r.bottom));
-            float d = (float)Math.hypot(px - nx, py - ny);
-            if (d <= maxDistance) {
-                best = AccessibilityNodeInfo.obtain(node);
-                bestDist = d;
-            }
-        }
-
-        for (int i = 0; i < node.getChildCount(); i++) {
-            AccessibilityNodeInfo child = node.getChild(i);
-            if (child == null) continue;
-            AccessibilityNodeInfo candidate = findNearestClickable(child, px, py, maxDistance);
-            if (candidate != null) {
-                android.graphics.Rect cr = new android.graphics.Rect();
-                candidate.getBoundsInScreen(cr);
-                float nx = Math.max(cr.left, Math.min(px, cr.right));
-                float ny = Math.max(cr.top, Math.min(py, cr.bottom));
-                float d = (float)Math.hypot(px - nx, py - ny);
-                if (best == null || d < bestDist) {
-                    if (best != null) best.recycle();
-                    best = candidate;
-                    bestDist = d;
-                } else {
-                    candidate.recycle();
-                }
-            }
-            child.recycle();
-        }
-        return best;
-    }
-
-    private void moveCursorTo(float nx, float ny) {
-        if (cursor == null || wm == null) return;
-        float maxX = Math.max(0, screenW - cursorSize);
-        float maxY = Math.max(0, screenH - cursorSize);
-        x = Math.max(0, Math.min(maxX, nx));
-        y = Math.max(0, Math.min(maxY, ny));
-        WindowManager.LayoutParams lp = (WindowManager.LayoutParams)cursor.getTag();
-        lp.x = Math.round(x);
-        lp.y = Math.round(y);
-        try { wm.updateViewLayout(cursor, lp); } catch(Exception ignored) {}
+        return android.view.accessibility.AccessibilityNodeInfo.obtain(node);
     }
 
     @Override public void onAccessibilityEvent(AccessibilityEvent event) { }
     @Override public void onInterrupt() { }
 
     @Override public void onDestroy() {
-        autoTarget = false;
-        handler.removeCallbacks(autoTargetRunnable);
+        stopAutoTargetMode();
         instance = null;
         if (cursor != null && wm != null) {
             try { wm.removeView(cursor); } catch (Exception ignored) {}

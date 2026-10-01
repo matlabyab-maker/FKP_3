@@ -1,0 +1,11 @@
+FKP_3 v1.37
+================
+Added a toggle button to the mouse overlay: "حرکت خودکار".
+When enabled, the Accessibility service periodically scans the active screen's
+Accessibility tree and moves the cursor to visible clickable controls (including
+accessible links and buttons). It does NOT click them automatically.
+Press the button again to disable automatic targeting.
+The mode stops automatically when the mouse overlay is hidden or the service is destroyed.
+
+This feature depends on the Android Accessibility service being enabled and the
+target application exposing clickable controls through its Accessibility tree.

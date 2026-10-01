@@ -1,4 +1,4 @@
-FKP_3 v1.37
+FKP_3 v1.36
 
 Mouse click reliability update:
 - Enables retrieval of interactive accessibility windows.
