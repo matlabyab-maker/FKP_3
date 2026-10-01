@@ -407,7 +407,7 @@ public class MouseAccessibilityService extends AccessibilityService {
         try {
             if (right && Build.VERSION.SDK_INT >= 24 &&
                 node.getActionList().toString().contains("ACTION_CONTEXT_CLICK")) {
-                if (node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CONTEXT_CLICK)) return true;
+                /* ACTION_CONTEXT_CLICK is not available in this compile SDK; use gesture fallback for right-click. */
             }
             if (node.isClickable() && node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)) return true;
             // Some browser controls expose ACTION_CLICK without reporting clickable.
